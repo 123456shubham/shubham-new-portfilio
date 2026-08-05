@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Shubham Chauhan — Python, Flutter, API, ERP and full-stack development portfolio.">
+    <meta name="theme-color" content="#0f172a">
+    <title>Shubham Chauhan | Software Developer</title>
+
+    <script>
+        (() => {
+            const savedTheme = localStorage.getItem("portfolio-theme");
+            const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+            document.documentElement.dataset.theme = savedTheme || (systemDark ? "dark" : "light");
+        })();
+    </script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Manrope:wght@600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<header class="site-header">
+    <div class="container nav-shell">
+        <a class="brand" href="#home" aria-label="Shubham Chauhan home">
+            <span class="brand-logo">
+                <svg viewBox="0 0 52 52" aria-hidden="true">
+                    <path d="M15 14h22a7 7 0 0 1 7 7v11a7 7 0 0 1-7 7H25l-8 6v-6h-2a7 7 0 0 1-7-7V21a7 7 0 0 1 7-7Z"/>
+                    <path class="logo-line" d="M18 27h4l3-6 4 12 3-6h4"/>
+                </svg>
+            </span>
+            <span>
+                <strong>Shubham Chauhan</strong>
+                <small>AI-enabled software development</small>
+            </span>
+        </a>
+
+        <nav class="main-nav" id="main-nav">
+            <a href="#about">About</a>
+            <a href="#services">Services</a>
+            <a href="#projects">Projects</a>
+            <a href="#reviews">Reviews</a>
+            <a href="#contact">Contact</a>
+        </nav>
+
+        <div class="nav-actions">
+            <button class="icon-button" id="theme-toggle" type="button" aria-label="Switch color theme">
+                <i class="fa-solid fa-moon"></i>
+            </button>
+            <button class="icon-button mobile-menu" id="menu-toggle" type="button" aria-label="Open navigation" aria-expanded="false">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+            <a class="nav-quote" href="#contact">Start a project</a>
+        </div>
+    </div>
+</header>
+
+<main>
+    <section class="hero" id="home">
+        <div class="hero-orb orb-one"></div>
+        <div class="hero-orb orb-two"></div>
+        <div class="container hero-grid">
+            <div class="hero-copy reveal">
+                <div class="availability"><span></span> Available for selected projects</div>
+                <p class="eyebrow">PYTHON · FLUTTER · APIs · ERP · AI</p>
+                <h1>Digital products designed to solve real business problems.</h1>
+                <p class="hero-description">
+                    I build responsive websites, mobile applications, Python APIs,
+                    admin dashboards and business software with clean architecture
+                    and practical user experience.
+                </p>
+                <div class="hero-actions">
+                    <a class="button primary" href="#projects">Explore projects <i class="fa-solid fa-arrow-right"></i></a>
+                    <button class="button secondary" id="open-chat-hero" type="button"><i class="fa-solid fa-wand-magic-sparkles"></i> Ask AI assistant</button>
+                </div>
+                <div class="hero-metrics">
+                    <div><strong>4.9+</strong><span>Years in development</span></div>
+                    <div><strong>Mobile + Web</strong><span>Connected product delivery</span></div>
+                    <div><strong>Client-first</strong><span>Clear project communication</span></div>
+                </div>
+            </div>
+
+            <div class="hero-panel reveal">
+                <div class="developer-card">
+                    <div class="developer-card-head">
+                        <span class="ai-mark"><i class="fa-solid fa-code"></i></span>
+                        <div>
+                            <small>DEVELOPER PROFILE</small>
+                            <h2>Build. Connect. Improve.</h2>
+                        </div>
+                        <span class="status-dot"></span>
+                    </div>
+                    <div class="terminal">
+                        <div class="terminal-top"><i></i><i></i><i></i><span>project_architecture.py</span></div>
+                        <pre><code><b>class</b> ProductDeveloper:
+    stack = [
+        "Python / FastAPI",
+        "Flutter / Mobile",
+        "Web / Admin",
+        "AI integrations"
+    ]
+
+    def deliver(self):
+        return "usable software"</code></pre>
+                    </div>
+                    <div class="technology-list">
+                        <span><i class="fa-brands fa-python"></i> Python</span>
+                        <span><i class="fa-solid fa-bolt"></i> FastAPI</span>
+                        <span><i class="fa-solid fa-mobile-screen"></i> Flutter</span>
+                        <span><i class="fa-solid fa-brain"></i> AI</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="section" id="about">
+        <div class="container split-section">
+            <div class="section-heading reveal">
+                <p class="eyebrow">ABOUT</p>
+                <h2>Engineering choices guided by usability and long-term value.</h2>
+            </div>
+            <div class="content-copy reveal">
+                <p>I work across mobile, backend and web development to create complete systems rather than disconnected screens.</p>
+                <p>Projects are planned around user roles, business workflows, secure data handling, maintainable code and a clear path to deployment.</p>
+                <div class="check-grid">
+                    <span><i class="fa-solid fa-circle-check"></i> Responsive product design</span>
+                    <span><i class="fa-solid fa-circle-check"></i> API and database integration</span>
+                    <span><i class="fa-solid fa-circle-check"></i> Role-based applications</span>
+                    <span><i class="fa-solid fa-circle-check"></i> Production-focused structure</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="section muted-section" id="services">
+        <div class="container">
+            <div class="section-title reveal">
+                <p class="eyebrow">SERVICES</p>
+                <h2>Connected development services</h2>
+                <p>From an initial product idea to working interfaces, APIs, data and administration.</p>
+            </div>
+            <div class="service-grid">
+                <article class="service-card reveal">
+                    <div class="service-icon"><i class="fa-solid fa-mobile-screen-button"></i></div>
+                    <h3>Mobile Applications</h3>
+                    <p>Flutter applications for Android and iOS with authentication, APIs, payments and notifications.</p>
+                    <span>Flutter · Firebase · REST</span>
+                </article>
+                <article class="service-card reveal">
+                    <div class="service-icon"><i class="fa-solid fa-server"></i></div>
+                    <h3>Python & APIs</h3>
+                    <p>Flask and FastAPI backends with databases, permissions, file handling and documentation.</p>
+                    <span>Python · FastAPI · SQL</span>
+                </article>
+                <article class="service-card reveal">
+                    <div class="service-icon"><i class="fa-solid fa-layer-group"></i></div>
+                    <h3>ERP & Admin Systems</h3>
+                    <p>Dashboards and role-based modules for schools, inventory, operations and service businesses.</p>
+                    <span>ERP · Reports · Automation</span>
+                </article>
+                <article class="service-card reveal">
+                    <div class="service-icon"><i class="fa-solid fa-globe"></i></div>
+                    <h3>Web Experiences</h3>
+                    <p>Responsive business websites and web apps with dynamic content, SEO and contact workflows.</p>
+                    <span>Flask · HTML · JavaScript</span>
+                </article>
+            </div>
+        </div>
+    </section>
+
+    <section class="section" id="projects">
+        <div class="container">
+            <div class="section-title reveal">
+                <p class="eyebrow">PROJECTS</p>
+                <h2>Solutions shaped around real workflows</h2>
+                <p>Representative project categories across business, education and commerce.</p>
+            </div>
+            <div class="project-grid">
+                {% for project in projects %}
+                <article class="project-card reveal">
+                    <div class="project-visual">
+                        <span class="project-number">{{ "%02d"|format(loop.index) }}</span>
+                        <i class="fa-solid {{ project.icon }}"></i>
+                    </div>
+                    <div class="project-content">
+                        <small>{{ project.category }}</small>
+                        <h3>{{ project.title }}</h3>
+                        <p>{{ project.description }}</p>
+                        <div class="tags">
+                            {% for tag in project.tags %}<span>{{ tag }}</span>{% endfor %}
+                        </div>
+                        <button class="project-chat-link open-chat" type="button" data-project="{{ project.title }}">
+                            Discuss this project <i class="fa-solid fa-arrow-right"></i>
+                        </button>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+        </div>
+    </section>
+
+    <section class="section review-section" id="reviews">
+        <div class="container">
+            <div class="section-title light reveal">
+                <p class="eyebrow">CLIENT EXPERIENCE</p>
+                <h2>Professional communication from planning to delivery</h2>
+                <p>Replace these representative samples with verified client testimonials before public launch.</p>
+            </div>
+            <div class="review-grid">
+                {% for review in reviews %}
+                <article class="review-card reveal">
+                    <div class="stars">★★★★★</div>
+                    <blockquote>“{{ review.text }}”</blockquote>
+                    <div class="review-person">
+                        <span>{{ review.initials }}</span>
+                        <div><strong>{{ review.name }}</strong><small>{{ review.position }}</small></div>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+        </div>
+    </section>
+
+    <section class="section" id="contact">
+        <div class="container contact-grid">
+            <div class="contact-copy reveal">
+                <p class="eyebrow">CONTACT</p>
+                <h2>Tell me what you want to build.</h2>
+                <p>Share the business goal, required platforms and important features. Your enquiry is saved securely and can also be delivered to your configured Gmail.</p>
+
+                <a class="whatsapp-card" href="{{ whatsapp_url }}" target="_blank" rel="noopener noreferrer">
+                    <span><i class="fa-brands fa-whatsapp"></i></span>
+                    <div><small>Quick conversation</small><strong>Continue on WhatsApp</strong></div>
+                    <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                </a>
+            </div>
+
+            <form class="contact-form reveal" method="POST" action="{{ url_for('contact') }}">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% for category, message in messages %}
+                        <div class="flash {{ category }}">{{ message }}</div>
+                    {% endfor %}
+                {% endwith %}
+
+                <div class="form-row">
+                    <label>Full name<input name="name" type="text" maxlength="100" placeholder="Your name" required></label>
+                    <label>Email address<input name="email" type="email" maxlength="180" placeholder="you@example.com" required></label>
+                </div>
+                <div class="form-row">
+                    <label>Phone / WhatsApp<input name="phone" type="tel" maxlength="40" placeholder="+91 ..."></label>
+                    <label>Project subject<input name="subject" type="text" maxlength="160" placeholder="Mobile app, ERP, website..." required></label>
+                </div>
+                <label>Project details<textarea name="message" maxlength="5000" rows="6" placeholder="Explain users, features and expected platforms..." required></textarea></label>
+                <button class="button primary submit-button" type="submit">Send enquiry <i class="fa-solid fa-paper-plane"></i></button>
+            </form>
+        </div>
+    </section>
+</main>
+
+<footer>
+    <div class="container footer-inner">
+        <div><strong>Shubham Chauhan</strong><p>Python · Flutter · API · ERP · AI development</p></div>
+        <p>© {{ current_year }} All rights reserved.</p>
+    </div>
+</footer>
+
+<a class="floating-whatsapp" href="{{ whatsapp_url }}" target="_blank" rel="noopener noreferrer" aria-label="Contact on WhatsApp">
+    <i class="fa-brands fa-whatsapp"></i>
+</a>
+
+<button class="chat-launcher" id="chat-launcher" type="button" aria-label="Open AI project assistant">
+    <span class="launcher-logo">
+        <svg viewBox="0 0 52 52" aria-hidden="true">
+            <path d="M15 14h22a7 7 0 0 1 7 7v11a7 7 0 0 1-7 7H25l-8 6v-6h-2a7 7 0 0 1-7-7V21a7 7 0 0 1 7-7Z"/>
+            <path class="logo-line" d="M18 27h4l3-6 4 12 3-6h4"/>
+        </svg>
+    </span>
+    <span class="launcher-text"><strong>AI Assistant</strong><small>{{ "Online" if ai_enabled else "Local mode" }}</small></span>
+    <i class="fa-solid fa-message launcher-message-icon"></i>
+</button>
+
+<aside class="chat-panel" id="chat-panel" aria-hidden="true">
+    <header class="chat-header">
+        <div class="chat-identity">
+            <span class="chat-ai-logo">
+                <svg viewBox="0 0 52 52" aria-hidden="true">
+                    <path d="M15 14h22a7 7 0 0 1 7 7v11a7 7 0 0 1-7 7H25l-8 6v-6h-2a7 7 0 0 1-7-7V21a7 7 0 0 1 7-7Z"/>
+                    <path class="logo-line" d="M18 27h4l3-6 4 12 3-6h4"/>
+                </svg>
+            </span>
+            <div><strong>Project AI</strong><small><i></i> {{ "Real-time AI connected" if ai_enabled else "Local assistant mode" }}</small></div>
+        </div>
+        <div class="chat-header-actions">
+            <button id="clear-chat" type="button" aria-label="Clear chat"><i class="fa-solid fa-trash-can"></i></button>
+            <button id="close-chat" type="button" aria-label="Close chat"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+    </header>
+
+    <div class="chat-messages" id="chat-messages" aria-live="polite">
+        <div class="message assistant">
+            <div class="message-avatar"><i class="fa-solid fa-sparkles"></i></div>
+            <div class="message-bubble">Hello! Tell me what you want to build. I can help structure the features, platforms and development approach.</div>
+        </div>
+    </div>
+
+    <div class="chat-suggestions" id="chat-suggestions">
+        <button type="button">E-commerce app</button>
+        <button type="button">School ERP</button>
+        <button type="button">Dating app packages</button>
+    </div>
+
+    <form class="chat-form" id="chat-form">
+        <textarea id="chat-input" rows="1" maxlength="4000" placeholder="Describe your project..." required></textarea>
+        <button id="chat-submit" type="submit" aria-label="Send message"><i class="fa-solid fa-arrow-up"></i></button>
+    </form>
+    <p class="chat-disclaimer">AI can make mistakes. Confirm final scope before development.</p>
+</aside>
+
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
