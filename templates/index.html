@@ -6,6 +6,7 @@
     <meta name="description" content="Shubham Chauhan — Python, Flutter, API, ERP and full-stack development portfolio.">
     <meta name="theme-color" content="#0f172a">
     <title>Shubham Chauhan | Software Developer</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/shubham-chauhan-logo.png') }}">
 
     <script>
         (() => {
@@ -26,14 +27,11 @@
     <div class="container nav-shell">
         <a class="brand" href="#home" aria-label="Shubham Chauhan home">
             <span class="brand-logo">
-                <svg viewBox="0 0 52 52" aria-hidden="true">
-                    <path d="M15 14h22a7 7 0 0 1 7 7v11a7 7 0 0 1-7 7H25l-8 6v-6h-2a7 7 0 0 1-7-7V21a7 7 0 0 1 7-7Z"/>
-                    <path class="logo-line" d="M18 27h4l3-6 4 12 3-6h4"/>
-                </svg>
+                <img src="{{ url_for('static', filename='images/shubham-chauhan-logo.png') }}" alt="" aria-hidden="true">
             </span>
             <span>
                 <strong>Shubham Chauhan</strong>
-                <small>AI-enabled software development</small>
+                <small>Software Engineer</small>
             </span>
         </a>
 
@@ -85,7 +83,7 @@
             <div class="hero-panel reveal">
                 <div class="developer-card">
                     <div class="developer-card-head">
-                        <span class="ai-mark"><i class="fa-solid fa-code"></i></span>
+                        <span class="profile-logo"><img src="{{ url_for('static', filename='images/shubham-chauhan-logo.png') }}" alt="Shubham Chauhan SC logo"></span>
                         <div>
                             <small>DEVELOPER PROFILE</small>
                             <h2>Build. Connect. Improve.</h2>
@@ -176,25 +174,39 @@
             <div class="section-title reveal">
                 <p class="eyebrow">PROJECTS</p>
                 <h2>Solutions shaped around real workflows</h2>
-                <p>Representative project categories across business, education and commerce.</p>
+                <p>Selected real products across business, services, education, food and travel.</p>
             </div>
             <div class="project-grid">
                 {% for project in projects %}
                 <article class="project-card reveal">
-                    <div class="project-visual">
+                    <div class="project-visual{% if project.image %} has-logo{% endif %}">
                         <span class="project-number">{{ "%02d"|format(loop.index) }}</span>
-                        <i class="fa-solid {{ project.icon }}"></i>
+                        {% if project.image %}
+                            <img src="{{ url_for('static', filename=project.image) }}" alt="{{ project.title }} project logo" loading="lazy">
+                        {% else %}
+                            <i class="fa-solid {{ project.icon }}"></i>
+                        {% endif %}
                     </div>
                     <div class="project-content">
                         <small>{{ project.category }}</small>
                         <h3>{{ project.title }}</h3>
+                        <span class="confidential-label"><i class="fa-solid fa-lock"></i> Client confidential</span>
                         <p>{{ project.description }}</p>
                         <div class="tags">
                             {% for tag in project.tags %}<span>{{ tag }}</span>{% endfor %}
                         </div>
-                        <button class="project-chat-link open-chat" type="button" data-project="{{ project.title }}">
-                            Discuss this project <i class="fa-solid fa-arrow-right"></i>
-                        </button>
+                        <div class="project-actions">
+                            {% if project.store_live and project.store_url %}
+                                <a class="play-store-link" href="{{ project.store_url }}" target="_blank" rel="noopener noreferrer">
+                                    <i class="fa-brands fa-google-play"></i> View on Play Store
+                                </a>
+                            {% elif project.store_live is defined and not project.store_live %}
+                                <span class="store-unavailable"><i class="fa-solid fa-circle-info"></i> Listing currently unavailable</span>
+                            {% endif %}
+                            <button class="project-chat-link open-chat" type="button" data-project="{{ project.title }}">
+                                Discuss <i class="fa-solid fa-arrow-right"></i>
+                            </button>
+                        </div>
                     </div>
                 </article>
                 {% endfor %}
@@ -239,6 +251,9 @@
             </div>
 
             <form class="contact-form reveal" method="POST" action="{{ url_for('contact') }}">
+                <div class="form-honeypot" aria-hidden="true">
+                    <label>Company website<input name="company_website" type="text" tabindex="-1" autocomplete="off"></label>
+                </div>
                 {% with messages = get_flashed_messages(with_categories=true) %}
                     {% for category, message in messages %}
                         <div class="flash {{ category }}">{{ message }}</div>
@@ -250,7 +265,7 @@
                     <label>Email address<input name="email" type="email" maxlength="180" placeholder="you@example.com" required></label>
                 </div>
                 <div class="form-row">
-                    <label>Phone / WhatsApp<input name="phone" type="tel" maxlength="40" placeholder="+91 ..."></label>
+                    <label>Phone / WhatsApp <small class="optional-label">Optional</small><input name="phone" type="tel" maxlength="40" inputmode="tel" placeholder="+91 98765 43210"></label>
                     <label>Project subject<input name="subject" type="text" maxlength="160" placeholder="Mobile app, ERP, website..." required></label>
                 </div>
                 <label>Project details<textarea name="message" maxlength="5000" rows="6" placeholder="Explain users, features and expected platforms..." required></textarea></label>
@@ -286,12 +301,9 @@
     <header class="chat-header">
         <div class="chat-identity">
             <span class="chat-ai-logo">
-                <svg viewBox="0 0 52 52" aria-hidden="true">
-                    <path d="M15 14h22a7 7 0 0 1 7 7v11a7 7 0 0 1-7 7H25l-8 6v-6h-2a7 7 0 0 1-7-7V21a7 7 0 0 1 7-7Z"/>
-                    <path class="logo-line" d="M18 27h4l3-6 4 12 3-6h4"/>
-                </svg>
+                <img src="{{ url_for('static', filename='images/shubham-chauhan-logo.png') }}" alt="">
             </span>
-            <div><strong>Project AI</strong><small><i></i> {{ "Real-time AI connected" if ai_enabled else "Local assistant mode" }}</small></div>
+            <div><strong>Shubham AI Concierge</strong><small><i></i> {{ "Real-time multimodal AI" if ai_enabled else "Professional assistant" }}</small></div>
         </div>
         <div class="chat-header-actions">
             <button id="clear-chat" type="button" aria-label="Clear chat"><i class="fa-solid fa-trash-can"></i></button>
@@ -301,8 +313,8 @@
 
     <div class="chat-messages" id="chat-messages" aria-live="polite">
         <div class="message assistant">
-            <div class="message-avatar"><i class="fa-solid fa-sparkles"></i></div>
-            <div class="message-bubble">Hello! Tell me what you want to build. I can help structure the features, platforms and development approach.</div>
+            <div class="message-avatar"><img src="{{ url_for('static', filename='images/shubham-chauhan-logo.png') }}" alt=""></div>
+            <div class="message-bubble">Hello! Share your project idea, screenshot or PDF. I’ll review it and help structure the requirements and next steps.</div>
         </div>
     </div>
 
@@ -313,10 +325,13 @@
     </div>
 
     <form class="chat-form" id="chat-form">
-        <textarea id="chat-input" rows="1" maxlength="4000" placeholder="Describe your project..." required></textarea>
+        <div class="chat-attachment-preview" id="chat-attachment-preview" hidden></div>
+        <label class="chat-attach" for="chat-attachments" aria-label="Attach images or PDF"><i class="fa-solid fa-paperclip"></i></label>
+        <input id="chat-attachments" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" multiple hidden>
+        <textarea id="chat-input" rows="1" maxlength="4000" placeholder="Describe your project or attach a file..."></textarea>
         <button id="chat-submit" type="submit" aria-label="Send message"><i class="fa-solid fa-arrow-up"></i></button>
     </form>
-    <p class="chat-disclaimer">AI can make mistakes. Confirm final scope before development.</p>
+    <p class="chat-disclaimer">Images/PDFs supported · AI guidance is reviewed before final scope.</p>
 </aside>
 
 <script src="{{ url_for('static', filename='js/main.js') }}"></script>

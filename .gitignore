@@ -1,4 +1,7 @@
 .env
+google-service-account.json
+*-service-account.json
+Portfolio_Enquiries.xlsx
 venv/
 .venv/
 __pycache__/

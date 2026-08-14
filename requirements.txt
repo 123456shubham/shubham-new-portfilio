@@ -1,3 +1,5 @@
 Flask>=3.1,<4
 python-dotenv>=1.0,<2
 openai>=1.100
+openpyxl>=3.1,<4
+gspread>=6.2,<7

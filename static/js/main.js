@@ -37,11 +37,43 @@
 
     mainNav?.querySelectorAll("a").forEach((link) => {
         link.addEventListener("click", () => {
+            mainNav.querySelectorAll("a").forEach((item) => {
+                item.classList.toggle("active", item === link);
+                item.removeAttribute("aria-current");
+            });
+            link.setAttribute("aria-current", "page");
             mainNav.classList.remove("open");
             menuToggle?.setAttribute("aria-expanded", "false");
             if (menuToggle) menuToggle.innerHTML = '<i class="fa-solid fa-bars"></i>';
         });
     });
+
+    const navLinks = [...(mainNav?.querySelectorAll('a[href^="#"]') || [])];
+    const navSections = navLinks
+        .map((link) => document.querySelector(link.getAttribute("href")))
+        .filter(Boolean);
+
+    function selectActiveTab(sectionId) {
+        navLinks.forEach((link) => {
+            const active = link.getAttribute("href") === `#${sectionId}`;
+            link.classList.toggle("active", active);
+            if (active) link.setAttribute("aria-current", "page");
+            else link.removeAttribute("aria-current");
+        });
+    }
+
+    if (navSections.length) {
+        const navObserver = new IntersectionObserver(
+            (entries) => {
+                const visible = entries
+                    .filter((entry) => entry.isIntersecting)
+                    .sort((first, second) => second.intersectionRatio - first.intersectionRatio)[0];
+                if (visible) selectActiveTab(visible.target.id);
+            },
+            { rootMargin: "-24% 0px -58% 0px", threshold: [0, .2, .45] }
+        );
+        navSections.forEach((section) => navObserver.observe(section));
+    }
 
     const observer = new IntersectionObserver(
         (entries) => {
@@ -70,6 +102,9 @@
     const submit = document.querySelector("#chat-submit");
     const messages = document.querySelector("#chat-messages");
     const suggestions = document.querySelector("#chat-suggestions");
+    const attachmentsInput = document.querySelector("#chat-attachments");
+    const attachmentPreview = document.querySelector("#chat-attachment-preview");
+    let selectedFiles = [];
 
     const HISTORY_KEY = "shubham-portfolio-chat-history-v1";
     let history = [];
@@ -96,7 +131,7 @@
         if (role === "assistant") {
             const avatar = document.createElement("div");
             avatar.className = "message-avatar";
-            avatar.innerHTML = '<i class="fa-solid fa-sparkles"></i>';
+            avatar.innerHTML = '<img src="/static/images/shubham-chauhan-logo.png" alt="">';
             wrapper.appendChild(avatar);
         }
 
@@ -162,6 +197,35 @@
         );
     });
 
+    function renderAttachments() {
+        attachmentPreview.innerHTML = "";
+        attachmentPreview.hidden = !selectedFiles.length;
+        selectedFiles.forEach((file, index) => {
+            const chip = document.createElement("span");
+            chip.className = "attachment-chip";
+            chip.innerHTML = `<i class="fa-solid ${file.type === "application/pdf" ? "fa-file-pdf" : "fa-image"}"></i><span></span><button type="button" aria-label="Remove attachment"><i class="fa-solid fa-xmark"></i></button>`;
+            chip.querySelector("span").textContent = file.name;
+            chip.querySelector("button").addEventListener("click", () => {
+                selectedFiles.splice(index, 1);
+                renderAttachments();
+            });
+            attachmentPreview.appendChild(chip);
+        });
+    }
+
+    attachmentsInput?.addEventListener("change", () => {
+        const allowed = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
+        const incoming = [...attachmentsInput.files];
+        const invalid = incoming.find((file) => !allowed.includes(file.type) || file.size > 5 * 1024 * 1024);
+        if (invalid) {
+            createMessage("assistant", "Please attach only JPG, PNG, WebP or PDF files up to 5 MB each.");
+            attachmentsInput.value = "";
+            return;
+        }
+        selectedFiles = incoming.slice(0, 3);
+        renderAttachments();
+    });
+
     suggestions?.querySelectorAll("button").forEach((button) => {
         button.addEventListener("click", () => {
             input.value = button.textContent.trim();
@@ -181,8 +245,9 @@
         }
     });
 
-    async function streamReply(message) {
-        createMessage("user", message);
+    async function streamReply(message, files = []) {
+        const attachmentNames = files.map((file) => `📎 ${file.name}`).join("\n");
+        createMessage("user", [message, attachmentNames].filter(Boolean).join("\n\n"));
         const priorHistory = history.slice(-14);
         history.push({ role: "user", content: message });
         persistHistory();
@@ -195,16 +260,17 @@
         let assistantText = "";
 
         try {
+            const payload = new FormData();
+            payload.append("message", message);
+            payload.append("history", JSON.stringify(priorHistory));
+            files.forEach((file) => payload.append("attachments", file, file.name));
+
             const response = await fetch("/api/chat-stream", {
                 method: "POST",
                 headers: {
-                    "Content-Type": "application/json",
                     "Accept": "text/event-stream",
                 },
-                body: JSON.stringify({
-                    message,
-                    history: priorHistory,
-                }),
+                body: payload,
             });
 
             if (!response.ok || !response.body) {
@@ -280,11 +346,15 @@
     form?.addEventListener("submit", async (event) => {
         event.preventDefault();
         const message = input.value.trim();
-        if (!message || submit.disabled) return;
+        if ((!message && !selectedFiles.length) || submit.disabled) return;
 
+        const filesToSend = [...selectedFiles];
+        selectedFiles = [];
+        attachmentsInput.value = "";
+        renderAttachments();
         input.value = "";
         input.style.height = "auto";
         suggestions.style.display = "none";
-        await streamReply(message);
+        await streamReply(message, filesToSend);
     });
 })();
