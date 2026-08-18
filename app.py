@@ -65,6 +65,9 @@ GOOGLE_SHEET_NAME = os.getenv("GOOGLE_SHEET_NAME", "Enquiries").strip()
 GOOGLE_SERVICE_ACCOUNT_PATH = BASE_DIR / os.getenv(
     "GOOGLE_SERVICE_ACCOUNT_FILE", "google-service-account.json"
 ).strip()
+GOOGLE_SERVICE_ACCOUNT_JSON_BASE64 = os.getenv(
+    "GOOGLE_SERVICE_ACCOUNT_JSON_BASE64", ""
+).strip()
 GOOGLE_SHEET_LOCK = threading.Lock()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
@@ -378,12 +381,21 @@ def append_enquiry_to_google_sheet(
     email_status: str,
 ) -> bool:
     """Append an enquiry to Google Sheets immediately when credentials exist."""
-    if not GOOGLE_SHEET_ID or not GOOGLE_SERVICE_ACCOUNT_PATH.is_file():
+    has_google_credentials = bool(GOOGLE_SERVICE_ACCOUNT_JSON_BASE64) or (
+        GOOGLE_SERVICE_ACCOUNT_PATH.is_file()
+    )
+    if not GOOGLE_SHEET_ID or not has_google_credentials:
         app.logger.warning("Google Sheets credentials are missing; live sync skipped.")
         return False
 
     with GOOGLE_SHEET_LOCK:
-        client = gspread.service_account(filename=str(GOOGLE_SERVICE_ACCOUNT_PATH))
+        if GOOGLE_SERVICE_ACCOUNT_JSON_BASE64:
+            credentials = json.loads(
+                base64.b64decode(GOOGLE_SERVICE_ACCOUNT_JSON_BASE64).decode("utf-8")
+            )
+            client = gspread.service_account_from_dict(credentials)
+        else:
+            client = gspread.service_account(filename=str(GOOGLE_SERVICE_ACCOUNT_PATH))
         spreadsheet = client.open_by_key(GOOGLE_SHEET_ID)
         try:
             sheet = spreadsheet.worksheet(GOOGLE_SHEET_NAME)
@@ -1244,7 +1256,11 @@ def health() -> dict[str, Any]:
             MAIL_USERNAME and MAIL_PASSWORD and MAIL_RECEIVER
         ),
         "google_sheets_configured": bool(
-            GOOGLE_SHEET_ID and GOOGLE_SERVICE_ACCOUNT_PATH.is_file()
+            GOOGLE_SHEET_ID
+            and (
+                GOOGLE_SERVICE_ACCOUNT_JSON_BASE64
+                or GOOGLE_SERVICE_ACCOUNT_PATH.is_file()
+            )
         ),
     }
 
