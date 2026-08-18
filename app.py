@@ -687,18 +687,18 @@ def configure_google_sheet_dashboard(spreadsheet, enquiry_sheet) -> None:
         range_name="E5:O6",
         values=[
             [
-                "WON VALUE", '=SUMIFS(Enquiries!H2:H,Enquiries!I2:I,"Won",Enquiries!L2:L,"Valid")',
-                "LOST VALUE", '=SUMIFS(Enquiries!H2:H,Enquiries!I2:I,"Lost",Enquiries!L2:L,"Valid")',
-                "ACTIVE PIPELINE", '=SUMIFS(Enquiries!H2:H,Enquiries!L2:L,"Valid",Enquiries!I2:I,"<>Won",Enquiries!I2:I,"<>Lost",Enquiries!I2:I,"<>Closed")',
-                "TOTAL QUOTED", '=SUMIFS(Enquiries!H2:H,Enquiries!L2:L,"Valid")',
-                "WON PROJECTS", "LOST PROJECTS", "ACTIVE PROJECTS",
+                "WON VALUE", "LOST VALUE", "ACTIVE PIPELINE", "TOTAL QUOTED",
+                "WON PROJECTS", "LOST PROJECTS", "ACTIVE PROJECTS", "", "", "", "",
             ],
             [
-                "Auto-updating", "", "Auto-updating", "", "Auto-updating", "",
-                "Auto-updating", "",
+                '=SUMIFS(Enquiries!H2:H,Enquiries!I2:I,"Won",Enquiries!L2:L,"Valid")',
+                '=SUMIFS(Enquiries!H2:H,Enquiries!I2:I,"Lost",Enquiries!L2:L,"Valid")',
+                '=SUMIFS(Enquiries!H2:H,Enquiries!L2:L,"Valid",Enquiries!I2:I,"<>Won",Enquiries!I2:I,"<>Lost",Enquiries!I2:I,"<>Closed")',
+                '=SUMIFS(Enquiries!H2:H,Enquiries!L2:L,"Valid")',
                 '=COUNTIFS(Enquiries!I2:I,"Won",Enquiries!L2:L,"Valid")',
                 '=COUNTIFS(Enquiries!I2:I,"Lost",Enquiries!L2:L,"Valid")',
                 '=COUNTIFS(Enquiries!A2:A,"<>",Enquiries!L2:L,"Valid",Enquiries!I2:I,"<>Won",Enquiries!I2:I,"<>Lost",Enquiries!I2:I,"<>Closed")',
+                "", "", "", "",
             ],
         ],
         value_input_option="USER_ENTERED",
@@ -713,7 +713,7 @@ def configure_google_sheet_dashboard(spreadsheet, enquiry_sheet) -> None:
         },
     )
     finder.format(
-        "F5:L5",
+        "E6:H6",
         {
             "numberFormat": {"type": "CURRENCY", "pattern": "₹#,##0.00"},
             "textFormat": {"bold": True, "fontSize": 12},
@@ -733,7 +733,7 @@ def configure_google_sheet_dashboard(spreadsheet, enquiry_sheet) -> None:
         finder = spreadsheet.add_worksheet(title="Lead Finder", rows=500, cols=23)
     finder.resize(rows=max(finder.row_count, 500), cols=max(finder.col_count, 23))
     desired_formula = (
-        '=IF(B5="",FILTER(Enquiries!A2:O,Enquiries!A2:A<>""),'
+        '=IF(B5="",IFERROR(FILTER(Enquiries!A2:O,Enquiries!A2:A<>""),"No enquiries yet"),'
         'IFERROR(FILTER(Enquiries!A2:O,REGEXMATCH(LOWER(Enquiries!A2:A&" "&'
         'Enquiries!C2:C&" "&Enquiries!D2:D&" "&Enquiries!F2:F),LOWER(B5))),'
         '"No matching enquiries"))'
