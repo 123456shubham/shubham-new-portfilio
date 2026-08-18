@@ -726,6 +726,73 @@ def configure_google_sheet_dashboard(spreadsheet, enquiry_sheet) -> None:
             "textFormat": {"bold": True, "foregroundColor": {"red": 1, "green": 1, "blue": 1}},
         },
     )
+    finder.batch_clear(["E5:O6"])
+    finder.format(
+        "E5:O6",
+        {
+            "backgroundColor": {"red": 1, "green": 1, "blue": 1},
+            "textFormat": {"bold": False, "foregroundColor": {"red": 0.12, "green": 0.12, "blue": 0.12}},
+        },
+    )
+
+    try:
+        summary = spreadsheet.worksheet("Business Summary")
+    except gspread.WorksheetNotFound:
+        summary = spreadsheet.add_worksheet(title="Business Summary", rows=60, cols=12)
+    spreadsheet.batch_update(
+        {
+            "requests": [
+                {
+                    "updateSheetProperties": {
+                        "properties": {"sheetId": summary.id, "index": 0},
+                        "fields": "index",
+                    }
+                }
+            ]
+        }
+    )
+    summary.batch_clear(["A1:L60"])
+    summary.update(
+        range_name="A1:H13",
+        values=[
+            ["BUSINESS SUMMARY", "", "", "", "", "", "", ""],
+            ["Live revenue and project performance — valid enquiries only", "", "", "", "", "", "", ""],
+            ["", "", "", "", "", "", "", ""],
+            ["WON REVENUE", "", "LOST VALUE", "", "ACTIVE PIPELINE", "", "TOTAL QUOTED", ""],
+            ['=SUMIFS(Enquiries!H2:H,Enquiries!I2:I,"Won",Enquiries!L2:L,"Valid")', "", '=SUMIFS(Enquiries!H2:H,Enquiries!I2:I,"Lost",Enquiries!L2:L,"Valid")', "", '=SUMIFS(Enquiries!H2:H,Enquiries!L2:L,"Valid",Enquiries!I2:I,"<>Won",Enquiries!I2:I,"<>Lost",Enquiries!I2:I,"<>Closed")', "", '=SUMIFS(Enquiries!H2:H,Enquiries!L2:L,"Valid")', ""],
+            ["", "", "", "", "", "", "", ""],
+            ["PROJECT PERFORMANCE", "", "", "", "", "", "", ""],
+            ["WON PROJECTS", "", "LOST PROJECTS", "", "ACTIVE PROJECTS", "", "TOTAL VALID LEADS", ""],
+            ['=COUNTIFS(Enquiries!I2:I,"Won",Enquiries!L2:L,"Valid")', "", '=COUNTIFS(Enquiries!I2:I,"Lost",Enquiries!L2:L,"Valid")', "", '=COUNTIFS(Enquiries!A2:A,"<>",Enquiries!L2:L,"Valid",Enquiries!I2:I,"<>Won",Enquiries!I2:I,"<>Lost",Enquiries!I2:I,"<>Closed")', "", '=COUNTIFS(Enquiries!A2:A,"<>",Enquiries!L2:L,"Valid")', ""],
+            ["", "", "", "", "", "", "", ""],
+            ["CALCULATION RULES", "", "", "", "", "", "", ""],
+            ["Won Revenue = valid enquiries marked Won  •  Lost Value = valid enquiries marked Lost", "", "", "", "", "", "", ""],
+            ["Active Pipeline excludes Won, Lost and Closed projects. All totals update automatically.", "", "", "", "", "", "", ""],
+        ],
+        value_input_option="USER_ENTERED",
+    )
+    summary.freeze(rows=2)
+    summary.format(
+        "A1:H2",
+        {
+            "backgroundColor": {"red": 0.04, "green": 0.09, "blue": 0.22},
+            "textFormat": {"bold": True, "foregroundColor": {"red": 1, "green": 1, "blue": 1}},
+        },
+    )
+    summary.format("A1", {"textFormat": {"bold": True, "fontSize": 20, "foregroundColor": {"red": 1, "green": 1, "blue": 1}}})
+    for card_range in ["A4:B5", "C4:D5", "E4:F5", "G4:H5", "A8:B9", "C8:D9", "E8:F9", "G8:H9"]:
+        summary.format(
+            card_range,
+            {
+                "backgroundColor": {"red": 0.94, "green": 0.96, "blue": 0.99},
+                "textFormat": {"bold": True, "foregroundColor": {"red": 0.07, "green": 0.16, "blue": 0.34}},
+                "verticalAlignment": "MIDDLE",
+            },
+        )
+    summary.format("A5:H5", {"numberFormat": {"type": "CURRENCY", "pattern": "₹#,##0.00"}, "textFormat": {"bold": True, "fontSize": 16}})
+    summary.format("A9:H9", {"textFormat": {"bold": True, "fontSize": 16}})
+    summary.format("A7:H7", {"backgroundColor": {"red": 0.145, "green": 0.388, "blue": 0.922}, "textFormat": {"bold": True, "foregroundColor": {"red": 1, "green": 1, "blue": 1}}})
+    summary.format("A11:H13", {"backgroundColor": {"red": 0.97, "green": 0.98, "blue": 1}, "textFormat": {"foregroundColor": {"red": 0.25, "green": 0.3, "blue": 0.4}}})
 
     try:
         finder = spreadsheet.worksheet("Lead Finder")
