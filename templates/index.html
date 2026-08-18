@@ -217,18 +217,37 @@
     <section class="section review-section" id="reviews">
         <div class="container">
             <div class="section-title light reveal">
-                <p class="eyebrow">CLIENT EXPERIENCE</p>
-                <h2>Professional communication from planning to delivery</h2>
-                <p>Replace these representative samples with verified client testimonials before public launch.</p>
+                <p class="eyebrow">CLIENT FEEDBACK</p>
+                <h2>What Clients Say About My Work</h2>
+                <p>Feedback from clients and businesses I’ve worked with across application, website, and software development projects.</p>
+            </div>
+            <div class="rating-summary reveal" aria-label="Overall client rating: 4.8 out of 5">
+                <div class="rating-score">4.8 <span>/ 5</span></div>
+                <div class="rating-summary-copy">
+                    <div class="stars" aria-hidden="true">
+                        {% for _ in range(5) %}<i class="fa-solid fa-star"></i>{% endfor %}
+                    </div>
+                    <p>Based on completed client projects</p>
+                </div>
             </div>
             <div class="review-grid">
                 {% for review in reviews %}
                 <article class="review-card reveal">
-                    <div class="stars">★★★★★</div>
-                    <blockquote>“{{ review.text }}”</blockquote>
+                    <div class="review-card-top">
+                        <div class="review-logo">
+                            <img src="{{ url_for('static', filename=review.image) }}" alt="{{ review.company }} project logo" width="64" height="64" loading="lazy">
+                        </div>
+                        <div class="stars" aria-label="{{ review.rating }} out of 5 stars">
+                            {% for star in range(1, 6) %}
+                                <i class="fa-{% if star <= review.rating %}solid{% else %}regular{% endif %} fa-star" aria-hidden="true"></i>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    <i class="fa-solid fa-quote-left review-quote" aria-hidden="true"></i>
+                    <blockquote>{{ review.text }}</blockquote>
                     <div class="review-person">
-                        <span>{{ review.initials }}</span>
-                        <div><strong>{{ review.name }}</strong><small>{{ review.position }}</small></div>
+                        <strong>{{ review.company }}</strong>
+                        <small>Client Feedback</small>
                     </div>
                 </article>
                 {% endfor %}

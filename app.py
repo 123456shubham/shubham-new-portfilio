@@ -981,22 +981,40 @@ def home() -> str:
 
     reviews = [
         {
-            "initials": "AV",
-            "name": "Amit Verma",
-            "position": "Operations Manager",
-            "text": "The workflow was understood quickly and converted into a clean, practical system. Communication and revisions were handled professionally.",
+            "company": "WASEF",
+            "image": "images/projects/wasef-logo.jpeg",
+            "rating": 5,
+            "text": "Shubham understood our requirements and presented the WASEF project in a clean, professional way. He paid attention to our feedback, made the requested improvements carefully, and produced work that matched the direction we had discussed.",
         },
         {
-            "initials": "NS",
-            "name": "Neha Sharma",
-            "position": "School Administrator",
-            "text": "The connected modules were structured clearly, and the interface was much easier for our staff to operate.",
+            "company": "Biz-Control",
+            "image": "images/projects/biz-control-logo.jpeg",
+            "rating": 4,
+            "text": "Our experience with Shubham was positive and straightforward. He listened to the needs of Biz-Control, organised the work clearly, and created a practical final result. The quality of the completed project was very good.",
         },
         {
-            "initials": "RM",
-            "name": "Rohit Mehta",
-            "position": "Business Owner",
-            "text": "The website looked professional on desktop and mobile, and the final code was organised and maintainable.",
+            "company": "CollectX Agency & Rider",
+            "image": "images/projects/collectx-agency-icon.png",
+            "rating": 5,
+            "text": "The CollectX work was handled with care from the initial discussion through the final updates. Shubham remained cooperative, understood the separate agency and rider requirements, and completed the project in a polished and well-organised manner.",
+        },
+        {
+            "company": "Keyenzy",
+            "image": "images/projects/keyenzy-icon.png",
+            "rating": 4,
+            "text": "We appreciated Shubham’s patient and supportive approach while working on Keyenzy. Our ideas were considered properly, changes were addressed without confusion, and the finished application looks clean, useful, and professionally prepared.",
+        },
+        {
+            "company": "Cakingom",
+            "image": "images/projects/cakingom-icon.png",
+            "rating": 5,
+            "text": "Working with Shubham on Cakingom felt smooth and comfortable. He communicated clearly, gave proper attention to the details we shared, and refined the project based on our suggestions. We are happy with the overall outcome.",
+        },
+        {
+            "company": "The NinjaCare",
+            "image": "images/projects/ninjacare-user-icon.png",
+            "rating": 5,
+            "text": "Good work was delivered for The NinjaCare project. Shubham took time to understand what was needed for the customer and partner sides, responded well to feedback, and ensured the final presentation was clear and consistent.",
         },
     ]
 
