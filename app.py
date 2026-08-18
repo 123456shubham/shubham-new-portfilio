@@ -661,6 +661,71 @@ def configure_google_sheet_dashboard(spreadsheet, enquiry_sheet) -> None:
             ]
         }
     )
+    try:
+        finder = spreadsheet.worksheet("Lead Finder")
+    except gspread.WorksheetNotFound:
+        finder = spreadsheet.add_worksheet(title="Lead Finder", rows=500, cols=23)
+    finder.resize(rows=max(finder.row_count, 500), cols=max(finder.col_count, 23))
+    metadata = spreadsheet.fetch_sheet_metadata()
+    finder_metadata = next(
+        item for item in metadata["sheets"]
+        if item["properties"]["sheetId"] == finder.id
+    )
+    summary_unmerge_requests = []
+    for merged_range in finder_metadata.get("merges", []):
+        if (
+            merged_range.get("startRowIndex", 0) < 6
+            and merged_range.get("endRowIndex", 0) > 4
+            and merged_range.get("startColumnIndex", 0) < 15
+            and merged_range.get("endColumnIndex", 0) > 4
+        ):
+            summary_unmerge_requests.append({"unmergeCells": {"range": merged_range}})
+    if summary_unmerge_requests:
+        spreadsheet.batch_update({"requests": summary_unmerge_requests})
+
+    finder.update(
+        range_name="E5:O6",
+        values=[
+            [
+                "WON VALUE", '=SUMIFS(Enquiries!H2:H,Enquiries!I2:I,"Won",Enquiries!L2:L,"Valid")',
+                "LOST VALUE", '=SUMIFS(Enquiries!H2:H,Enquiries!I2:I,"Lost",Enquiries!L2:L,"Valid")',
+                "ACTIVE PIPELINE", '=SUMIFS(Enquiries!H2:H,Enquiries!L2:L,"Valid",Enquiries!I2:I,"<>Won",Enquiries!I2:I,"<>Lost",Enquiries!I2:I,"<>Closed")',
+                "TOTAL QUOTED", '=SUMIFS(Enquiries!H2:H,Enquiries!L2:L,"Valid")',
+                "WON PROJECTS", "LOST PROJECTS", "ACTIVE PROJECTS",
+            ],
+            [
+                "Auto-updating", "", "Auto-updating", "", "Auto-updating", "",
+                "Auto-updating", "",
+                '=COUNTIFS(Enquiries!I2:I,"Won",Enquiries!L2:L,"Valid")',
+                '=COUNTIFS(Enquiries!I2:I,"Lost",Enquiries!L2:L,"Valid")',
+                '=COUNTIFS(Enquiries!A2:A,"<>",Enquiries!L2:L,"Valid",Enquiries!I2:I,"<>Won",Enquiries!I2:I,"<>Lost",Enquiries!I2:I,"<>Closed")',
+            ],
+        ],
+        value_input_option="USER_ENTERED",
+    )
+    finder.format(
+        "E5:O6",
+        {
+            "backgroundColor": {"red": 0.945, "green": 0.961, "blue": 0.988},
+            "textFormat": {"bold": True, "foregroundColor": {"red": 0.09, "green": 0.15, "blue": 0.33}},
+            "horizontalAlignment": "CENTER",
+            "verticalAlignment": "MIDDLE",
+        },
+    )
+    finder.format(
+        "F5:L5",
+        {
+            "numberFormat": {"type": "CURRENCY", "pattern": "₹#,##0.00"},
+            "textFormat": {"bold": True, "fontSize": 12},
+        },
+    )
+    finder.format(
+        "E5:O5",
+        {
+            "backgroundColor": {"red": 0.09, "green": 0.15, "blue": 0.33},
+            "textFormat": {"bold": True, "foregroundColor": {"red": 1, "green": 1, "blue": 1}},
+        },
+    )
 
     try:
         finder = spreadsheet.worksheet("Lead Finder")
