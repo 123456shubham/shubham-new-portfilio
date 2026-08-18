@@ -1057,6 +1057,7 @@ def contact() -> Response:
 
     created_at = datetime.now(INDIA_TIMEZONE).isoformat(timespec="seconds")
 
+    initialise_database()
     with database_connection() as connection:
         cursor = connection.execute(
             """
