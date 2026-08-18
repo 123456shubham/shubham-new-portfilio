@@ -40,6 +40,9 @@ def initialise() -> None:
                 project_subject TEXT NOT NULL,
                 project_details TEXT NOT NULL,
                 project_amount NUMERIC(14, 2),
+                amount_received NUMERIC(14, 2) NOT NULL DEFAULT 0,
+                payment_date DATE,
+                payment_status TEXT NOT NULL DEFAULT 'Pending',
                 lead_status TEXT NOT NULL DEFAULT 'New',
                 email_status TEXT NOT NULL DEFAULT 'Pending',
                 source TEXT NOT NULL DEFAULT 'Portfolio Website',
@@ -52,6 +55,9 @@ def initialise() -> None:
             )
             """
         )
+        conn.execute("ALTER TABLE enquiries ADD COLUMN IF NOT EXISTS amount_received NUMERIC(14, 2) NOT NULL DEFAULT 0")
+        conn.execute("ALTER TABLE enquiries ADD COLUMN IF NOT EXISTS payment_date DATE")
+        conn.execute("ALTER TABLE enquiries ADD COLUMN IF NOT EXISTS payment_status TEXT NOT NULL DEFAULT 'Pending'")
         conn.execute(
             "CREATE INDEX IF NOT EXISTS enquiries_updated_at_idx ON enquiries(updated_at DESC)"
         )
@@ -126,11 +132,13 @@ def upsert_from_sheet(data: dict[str, Any], sheet_row: int) -> dict[str, Any]:
             """
             INSERT INTO enquiries (
                 enquiry_id, received_at, client_name, email, phone, project_subject,
-                project_details, project_amount, lead_status, email_status, source,
+                project_details, project_amount, amount_received, payment_date,
+                payment_status, lead_status, email_status, source,
                 validity, validation_notes, updated_at, sheet_row, sync_status, last_synced_at
             ) VALUES (
                 %(enquiry_id)s, %(received_at)s, %(client_name)s, %(email)s, %(phone)s,
                 %(project_subject)s, %(project_details)s, %(project_amount)s,
+                %(amount_received)s, %(payment_date)s, %(payment_status)s,
                 %(lead_status)s, %(email_status)s, %(source)s, %(validity)s,
                 %(validation_notes)s, NOW(), %(sheet_row)s, 'Synced', NOW()
             )
@@ -138,7 +146,11 @@ def upsert_from_sheet(data: dict[str, Any], sheet_row: int) -> dict[str, Any]:
                 client_name=EXCLUDED.client_name, email=EXCLUDED.email,
                 phone=EXCLUDED.phone, project_subject=EXCLUDED.project_subject,
                 project_details=EXCLUDED.project_details,
-                project_amount=EXCLUDED.project_amount, lead_status=EXCLUDED.lead_status,
+                project_amount=EXCLUDED.project_amount,
+                amount_received=EXCLUDED.amount_received,
+                payment_date=EXCLUDED.payment_date,
+                payment_status=EXCLUDED.payment_status,
+                lead_status=EXCLUDED.lead_status,
                 email_status=EXCLUDED.email_status, source=EXCLUDED.source,
                 validity=EXCLUDED.validity, validation_notes=EXCLUDED.validation_notes,
                 updated_at=NOW(), sheet_row=EXCLUDED.sheet_row,

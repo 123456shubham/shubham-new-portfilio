@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from email.message import EmailMessage
 from pathlib import Path
 from typing import Any
@@ -144,6 +144,18 @@ def format_india_datetime(value: str | datetime | None = None) -> str:
     return moment.astimezone(INDIA_TIMEZONE).strftime("%d %b %Y, %I:%M %p IST")
 
 
+def parse_payment_date(value: Any) -> date | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    for pattern in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d %b %Y"):
+        try:
+            return datetime.strptime(text, pattern).date()
+        except ValueError:
+            continue
+    raise ValueError("Payment Date must be YYYY-MM-DD or DD/MM/YYYY")
+
+
 EXCEL_HEADERS = [
     "Enquiry ID",
     "Received At",
@@ -162,8 +174,9 @@ EXCEL_HEADERS = [
 SYNC_HEADERS = [
     "Enquiry ID", "Received At", "Client Name", "Email Address",
     "Phone / WhatsApp", "Project Subject", "Project Details", "Project Amount",
-    "Lead Status", "Email Delivery", "Source", "Enquiry Validity",
-    "Validation Notes", "Updated At", "Sync Status",
+    "Amount Received", "Payment Date", "Payment Status", "Lead Status",
+    "Email Delivery", "Source", "Enquiry Validity", "Validation Notes",
+    "Updated At", "Sync Status",
 ]
 
 
@@ -588,16 +601,16 @@ def synced_google_worksheet():
         current_headers = sheet.row_values(1)
     if current_headers != SYNC_HEADERS:
         sheet.resize(cols=len(SYNC_HEADERS))
-        sheet.update(range_name="A1:O1", values=[SYNC_HEADERS])
+        sheet.update(range_name="A1:R1", values=[SYNC_HEADERS])
         sheet.freeze(rows=1)
         sheet.format(
-            "A1:O1",
+            "A1:R1",
             {
                 "backgroundColor": {"red": 0.09, "green": 0.15, "blue": 0.33},
                 "textFormat": {"bold": True, "foregroundColor": {"red": 1, "green": 1, "blue": 1}},
             },
         )
-        sheet.set_basic_filter("A1:O1000")
+        sheet.set_basic_filter("A1:R1000")
     configure_google_sheet_dashboard(spreadsheet, sheet)
     return sheet
 
@@ -608,12 +621,24 @@ def configure_google_sheet_dashboard(spreadsheet, enquiry_sheet) -> None:
         {
             "requests": [
                 {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": enquiry_sheet.id,
+                            "startRowIndex": 1,
+                            "startColumnIndex": 9,
+                            "endColumnIndex": 10,
+                        },
+                        "cell": {"userEnteredFormat": {"numberFormat": {"type": "DATE", "pattern": "dd mmm yyyy"}}},
+                        "fields": "userEnteredFormat.numberFormat",
+                    }
+                },
+                {
                     "setDataValidation": {
                         "range": {
                             "sheetId": enquiry_sheet.id,
                             "startRowIndex": 1,
                             "startColumnIndex": 7,
-                            "endColumnIndex": 8,
+                            "endColumnIndex": 9,
                         },
                         "rule": None,
                     }
@@ -624,7 +649,7 @@ def configure_google_sheet_dashboard(spreadsheet, enquiry_sheet) -> None:
                             "sheetId": enquiry_sheet.id,
                             "startRowIndex": 1,
                             "startColumnIndex": 7,
-                            "endColumnIndex": 8,
+                            "endColumnIndex": 9,
                         },
                         "cell": {
                             "userEnteredFormat": {
@@ -639,8 +664,29 @@ def configure_google_sheet_dashboard(spreadsheet, enquiry_sheet) -> None:
                         "range": {
                             "sheetId": enquiry_sheet.id,
                             "startRowIndex": 1,
-                            "startColumnIndex": 8,
-                            "endColumnIndex": 9,
+                            "startColumnIndex": 10,
+                            "endColumnIndex": 11,
+                        },
+                        "rule": {
+                            "condition": {
+                                "type": "ONE_OF_LIST",
+                                "values": [
+                                    {"userEnteredValue": value}
+                                    for value in ["Pending", "Partial", "Paid", "Refunded"]
+                                ],
+                            },
+                            "strict": True,
+                            "showCustomUi": True,
+                        },
+                    }
+                },
+                {
+                    "setDataValidation": {
+                        "range": {
+                            "sheetId": enquiry_sheet.id,
+                            "startRowIndex": 1,
+                            "startColumnIndex": 11,
+                            "endColumnIndex": 12,
                         },
                         "rule": {
                             "condition": {
@@ -739,7 +785,7 @@ def configure_google_sheet_dashboard(spreadsheet, enquiry_sheet) -> None:
         summary = spreadsheet.worksheet("Business Summary")
     except gspread.WorksheetNotFound:
         summary = spreadsheet.add_worksheet(title="Business Summary", rows=60, cols=12)
-    summary.resize(rows=max(summary.row_count, 60), cols=max(summary.col_count, 14))
+    summary.resize(rows=max(summary.row_count, 60), cols=max(summary.col_count, 20))
     spreadsheet.batch_update(
         {
             "requests": [
@@ -759,16 +805,16 @@ def configure_google_sheet_dashboard(spreadsheet, enquiry_sheet) -> None:
             ["BUSINESS SUMMARY", "", "", "", "", "", "", ""],
             ["Live revenue and project performance — valid enquiries only", "", "", "", "", "", "", ""],
             ["", "", "", "", "", "", "", ""],
-            ["WON REVENUE", "", "LOST VALUE", "", "ACTIVE PIPELINE", "", "TOTAL QUOTED", ""],
-            ['=SUMIFS(Enquiries!H2:H,Enquiries!I2:I,"Won",Enquiries!L2:L,"Valid")', "", '=SUMIFS(Enquiries!H2:H,Enquiries!I2:I,"Lost",Enquiries!L2:L,"Valid")', "", '=SUMIFS(Enquiries!H2:H,Enquiries!L2:L,"Valid",Enquiries!I2:I,"<>Won",Enquiries!I2:I,"<>Lost",Enquiries!I2:I,"<>Closed")', "", '=SUMIFS(Enquiries!H2:H,Enquiries!L2:L,"Valid")', ""],
+            ["TOTAL RECEIVED", "", "OUTSTANDING", "", "ACTIVE PIPELINE", "", "TOTAL QUOTED", ""],
+            ['=SUMIFS(Enquiries!I2:I,Enquiries!O2:O,"Valid")', "", '=SUMIFS(Enquiries!H2:H,Enquiries!O2:O,"Valid")-SUMIFS(Enquiries!I2:I,Enquiries!O2:O,"Valid")', "", '=SUMIFS(Enquiries!H2:H,Enquiries!O2:O,"Valid",Enquiries!L2:L,"<>Won",Enquiries!L2:L,"<>Lost",Enquiries!L2:L,"<>Closed")', "", '=SUMIFS(Enquiries!H2:H,Enquiries!O2:O,"Valid")', ""],
             ["", "", "", "", "", "", "", ""],
             ["PROJECT PERFORMANCE", "", "", "", "", "", "", ""],
             ["WON PROJECTS", "", "LOST PROJECTS", "", "ACTIVE PROJECTS", "", "TOTAL VALID LEADS", ""],
-            ['=COUNTIFS(Enquiries!I2:I,"Won",Enquiries!L2:L,"Valid")', "", '=COUNTIFS(Enquiries!I2:I,"Lost",Enquiries!L2:L,"Valid")', "", '=COUNTIFS(Enquiries!A2:A,"<>",Enquiries!L2:L,"Valid",Enquiries!I2:I,"<>Won",Enquiries!I2:I,"<>Lost",Enquiries!I2:I,"<>Closed")', "", '=COUNTIFS(Enquiries!A2:A,"<>",Enquiries!L2:L,"Valid")', ""],
+            ['=COUNTIFS(Enquiries!L2:L,"Won",Enquiries!O2:O,"Valid")', "", '=COUNTIFS(Enquiries!L2:L,"Lost",Enquiries!O2:O,"Valid")', "", '=COUNTIFS(Enquiries!A2:A,"<>",Enquiries!O2:O,"Valid",Enquiries!L2:L,"<>Won",Enquiries!L2:L,"<>Lost",Enquiries!L2:L,"<>Closed")', "", '=COUNTIFS(Enquiries!A2:A,"<>",Enquiries!O2:O,"Valid")', ""],
             ["", "", "", "", "", "", "", ""],
             ["CALCULATION RULES", "", "", "", "", "", "", ""],
-            ["Won Revenue = valid enquiries marked Won  •  Lost Value = valid enquiries marked Lost", "", "", "", "", "", "", ""],
-            ["Active Pipeline excludes Won, Lost and Closed projects. All totals update automatically.", "", "", "", "", "", "", ""],
+            ["Total Received uses Amount Received. Monthly income uses Payment Date for accurate cash-flow reporting.", "", "", "", "", "", "", ""],
+            ["Outstanding = Total Quoted − Total Received. All cards and charts update automatically.", "", "", "", "", "", "", ""],
         ],
         value_input_option="USER_ENTERED",
     )
@@ -798,16 +844,24 @@ def configure_google_sheet_dashboard(spreadsheet, enquiry_sheet) -> None:
         range_name="J2:N8",
         values=[
             ["STATUS", "PROJECTS", "", "METRIC", "VALUE"],
-            ["New", '=COUNTIFS(Enquiries!I2:I,"New",Enquiries!L2:L,"Valid")', "", "Won", '=SUMIFS(Enquiries!H2:H,Enquiries!I2:I,"Won",Enquiries!L2:L,"Valid")'],
-            ["Contacted", '=COUNTIFS(Enquiries!I2:I,"Contacted",Enquiries!L2:L,"Valid")', "", "Lost", '=SUMIFS(Enquiries!H2:H,Enquiries!I2:I,"Lost",Enquiries!L2:L,"Valid")'],
-            ["Qualified", '=COUNTIFS(Enquiries!I2:I,"Qualified",Enquiries!L2:L,"Valid")', "", "Active", '=SUMIFS(Enquiries!H2:H,Enquiries!L2:L,"Valid",Enquiries!I2:I,"<>Won",Enquiries!I2:I,"<>Lost",Enquiries!I2:I,"<>Closed")'],
-            ["Proposal Sent", '=COUNTIFS(Enquiries!I2:I,"Proposal Sent",Enquiries!L2:L,"Valid")', "", "Total Quoted", '=SUMIFS(Enquiries!H2:H,Enquiries!L2:L,"Valid")'],
-            ["Won", '=COUNTIFS(Enquiries!I2:I,"Won",Enquiries!L2:L,"Valid")', "", "", ""],
-            ["Lost", '=COUNTIFS(Enquiries!I2:I,"Lost",Enquiries!L2:L,"Valid")', "", "", ""],
+            ["New", '=COUNTIFS(Enquiries!L2:L,"New",Enquiries!O2:O,"Valid")', "", "Received", '=SUMIFS(Enquiries!I2:I,Enquiries!O2:O,"Valid")'],
+            ["Contacted", '=COUNTIFS(Enquiries!L2:L,"Contacted",Enquiries!O2:O,"Valid")', "", "Outstanding", '=SUMIFS(Enquiries!H2:H,Enquiries!O2:O,"Valid")-SUMIFS(Enquiries!I2:I,Enquiries!O2:O,"Valid")'],
+            ["Qualified", '=COUNTIFS(Enquiries!L2:L,"Qualified",Enquiries!O2:O,"Valid")', "", "Active", '=SUMIFS(Enquiries!H2:H,Enquiries!O2:O,"Valid",Enquiries!L2:L,"<>Won",Enquiries!L2:L,"<>Lost",Enquiries!L2:L,"<>Closed")'],
+            ["Proposal Sent", '=COUNTIFS(Enquiries!L2:L,"Proposal Sent",Enquiries!O2:O,"Valid")', "", "Total Quoted", '=SUMIFS(Enquiries!H2:H,Enquiries!O2:O,"Valid")'],
+            ["Won", '=COUNTIFS(Enquiries!L2:L,"Won",Enquiries!O2:O,"Valid")', "", "", ""],
+            ["Lost", '=COUNTIFS(Enquiries!L2:L,"Lost",Enquiries!O2:O,"Valid")', "", "", ""],
         ],
         value_input_option="USER_ENTERED",
     )
-    summary.update(range_name="J9:K9", values=[["Closed", '=COUNTIFS(Enquiries!I2:I,"Closed",Enquiries!L2:L,"Valid")']], value_input_option="USER_ENTERED")
+    summary.update(range_name="J9:K9", values=[["Closed", '=COUNTIFS(Enquiries!L2:L,"Closed",Enquiries!O2:O,"Valid")']], value_input_option="USER_ENTERED")
+    summary.update_acell(
+        "P2",
+        '=QUERY({TEXT(Enquiries!J2:J,"MMM YYYY"),Enquiries!I2:I,Enquiries!O2:O},"select Col1,sum(Col2) where Col1 is not null and Col3 = \'Valid\' group by Col1 label Col1 \'Month\',sum(Col2) \'Income\'",0)',
+    )
+    summary.update_acell(
+        "S2",
+        '=QUERY({Enquiries!F2:F,Enquiries!I2:I,Enquiries!O2:O},"select Col1,sum(Col2) where Col1 is not null and Col3 = \'Valid\' group by Col1 order by sum(Col2) desc limit 10 label Col1 \'Project\',sum(Col2) \'Received\'",0)',
+    )
 
     chart_metadata = spreadsheet.fetch_sheet_metadata()
     summary_metadata = next(
@@ -842,22 +896,45 @@ def configure_google_sheet_dashboard(spreadsheet, enquiry_sheet) -> None:
                 "addChart": {
                     "chart": {
                         "spec": {
-                            "title": "Revenue & Pipeline Overview",
-                            "subtitle": "Project amounts in INR",
+                            "title": "Monthly Income Trend",
+                            "subtitle": "Actual payments grouped by Payment Date",
                             "hiddenDimensionStrategy": "SHOW_ALL",
                             "basicChart": {
-                                "chartType": "COLUMN",
+                                "chartType": "LINE",
                                 "legendPosition": "NO_LEGEND",
                                 "headerCount": 0,
                                 "axis": [
-                                    {"position": "BOTTOM_AXIS", "title": "Metric"},
+                                    {"position": "BOTTOM_AXIS", "title": "Month"},
                                     {"position": "LEFT_AXIS", "title": "Amount (₹)"},
                                 ],
-                                "domains": [{"domain": {"sourceRange": {"sources": [{"sheetId": summary.id, "startRowIndex": 2, "endRowIndex": 6, "startColumnIndex": 12, "endColumnIndex": 13}]}}}],
-                                "series": [{"series": {"sourceRange": {"sources": [{"sheetId": summary.id, "startRowIndex": 2, "endRowIndex": 6, "startColumnIndex": 13, "endColumnIndex": 14}]}}, "targetAxis": "LEFT_AXIS"}],
+                                "domains": [{"domain": {"sourceRange": {"sources": [{"sheetId": summary.id, "startRowIndex": 2, "endRowIndex": 50, "startColumnIndex": 15, "endColumnIndex": 16}]}}}],
+                                "series": [{"series": {"sourceRange": {"sources": [{"sheetId": summary.id, "startRowIndex": 2, "endRowIndex": 50, "startColumnIndex": 16, "endColumnIndex": 17}]}}, "targetAxis": "LEFT_AXIS"}],
                             },
                         },
                         "position": {"overlayPosition": {"anchorCell": {"sheetId": summary.id, "rowIndex": 14, "columnIndex": 6}, "widthPixels": 570, "heightPixels": 360}},
+                    }
+                }
+            },
+            {
+                "addChart": {
+                    "chart": {
+                        "spec": {
+                            "title": "Top Projects by Amount Received",
+                            "subtitle": "Up to 10 highest-earning projects",
+                            "hiddenDimensionStrategy": "SHOW_ALL",
+                            "basicChart": {
+                                "chartType": "BAR",
+                                "legendPosition": "NO_LEGEND",
+                                "headerCount": 0,
+                                "axis": [
+                                    {"position": "LEFT_AXIS", "title": "Project"},
+                                    {"position": "BOTTOM_AXIS", "title": "Amount Received (₹)"},
+                                ],
+                                "domains": [{"domain": {"sourceRange": {"sources": [{"sheetId": summary.id, "startRowIndex": 2, "endRowIndex": 13, "startColumnIndex": 18, "endColumnIndex": 19}]}}}],
+                                "series": [{"series": {"sourceRange": {"sources": [{"sheetId": summary.id, "startRowIndex": 2, "endRowIndex": 13, "startColumnIndex": 19, "endColumnIndex": 20}]}}, "targetAxis": "BOTTOM_AXIS"}],
+                            },
+                        },
+                        "position": {"overlayPosition": {"anchorCell": {"sheetId": summary.id, "rowIndex": 34, "columnIndex": 0}, "widthPixels": 1140, "heightPixels": 420}},
                     }
                 }
             },
@@ -866,7 +943,7 @@ def configure_google_sheet_dashboard(spreadsheet, enquiry_sheet) -> None:
     chart_requests.append(
         {
             "updateDimensionProperties": {
-                "range": {"sheetId": summary.id, "dimension": "COLUMNS", "startIndex": 9, "endIndex": 14},
+                "range": {"sheetId": summary.id, "dimension": "COLUMNS", "startIndex": 9, "endIndex": 20},
                 "properties": {"hiddenByUser": True},
                 "fields": "hiddenByUser",
             }
@@ -880,12 +957,12 @@ def configure_google_sheet_dashboard(spreadsheet, enquiry_sheet) -> None:
         finder = spreadsheet.add_worksheet(title="Lead Finder", rows=500, cols=23)
     finder.resize(rows=max(finder.row_count, 500), cols=max(finder.col_count, 23))
     desired_formula = (
-        '=IF(B5="",IFERROR(FILTER(Enquiries!A2:O,Enquiries!A2:A<>""),"No enquiries yet"),'
-        'IFERROR(FILTER(Enquiries!A2:O,REGEXMATCH(LOWER(Enquiries!A2:A&" "&'
+        '=IF(B5="",IFERROR(FILTER(Enquiries!A2:R,Enquiries!A2:A<>""),"No enquiries yet"),'
+        'IFERROR(FILTER(Enquiries!A2:R,REGEXMATCH(LOWER(Enquiries!A2:A&" "&'
         'Enquiries!C2:C&" "&Enquiries!D2:D&" "&Enquiries!F2:F),LOWER(B5))),'
         '"No matching enquiries"))'
     )
-    current_header = finder.get("A8:O8")
+    current_header = finder.get("A8:R8")
     current_formula = finder.acell("A9", value_render_option="FORMULA").value
     if current_header != [SYNC_HEADERS] or current_formula != desired_formula:
         finder.batch_clear(["A8:W500"])
@@ -894,11 +971,11 @@ def configure_google_sheet_dashboard(spreadsheet, enquiry_sheet) -> None:
             values=[["All enquiries are shown below. Type an ID, client name, email or project subject in B5 to search."] + [""] * 14],
         )
         finder.update(range_name="A5:B5", values=[["SEARCH", ""]])
-        finder.update(range_name="A8:O8", values=[SYNC_HEADERS])
+        finder.update(range_name="A8:R8", values=[SYNC_HEADERS])
         finder.update_acell("A9", desired_formula)
         finder.freeze(rows=8)
         finder.format(
-            "A8:O8",
+            "A8:R8",
             {
                 "backgroundColor": {"red": 0.145, "green": 0.388, "blue": 0.922},
                 "textFormat": {"bold": True, "foregroundColor": {"red": 1, "green": 1, "blue": 1}},
@@ -932,6 +1009,7 @@ def upsert_enquiry_to_google_sheet(record: dict[str, Any]) -> int:
         ids = sheet.col_values(1)
         row_number = ids.index(enquiry_id) + 1 if enquiry_id in ids else len(ids) + 1
         amount = record.get("project_amount")
+        amount_received = record.get("amount_received")
         values = [[
             enquiry_id,
             format_india_datetime(record.get("received_at")),
@@ -939,11 +1017,13 @@ def upsert_enquiry_to_google_sheet(record: dict[str, Any]) -> int:
             record.get("phone", "") or "Not provided",
             record.get("project_subject", ""), record.get("project_details", ""),
             float(amount) if amount is not None else "",
+            float(amount_received) if amount_received is not None else 0,
+            str(record.get("payment_date") or ""), record.get("payment_status", "Pending"),
             record.get("lead_status", "New"), record.get("email_status", "Pending"),
             record.get("source", "Portfolio Website"), record.get("validity", "Valid"),
             record.get("validation_notes", ""), format_india_datetime(), "Synced",
         ]]
-        sheet.update(range_name=f"A{row_number}:O{row_number}", values=values)
+        sheet.update(range_name=f"A{row_number}:R{row_number}", values=values)
         enquiry_store.mark_synced(enquiry_id, row_number)
         return row_number
 
@@ -959,7 +1039,7 @@ def sync_google_sheet_to_database() -> dict[str, int]:
         subject = safe_text(row.get("Project Subject"), 160)
         details = safe_text(row.get("Project Details"), 5000)
         if not all([name, email, subject, details]) or not looks_like_email(email):
-            sheet.update_cell(index, 15, "Error: required fields or email invalid")
+            sheet.update_cell(index, 18, "Error: required fields or email invalid")
             result["skipped"] += 1
             continue
         enquiry_id = safe_text(row.get("Enquiry ID"), 40)
@@ -969,24 +1049,41 @@ def sync_google_sheet_to_database() -> dict[str, int]:
             result["ids_assigned"] += 1
         validity, notes = assess_enquiry_validity(email, str(row.get("Phone / WhatsApp", "")), details)
         try:
+            project_amount = enquiry_store.parse_amount(row.get("Project Amount"))
+            amount_received = enquiry_store.parse_amount(row.get("Amount Received")) or 0
+            payment_date = parse_payment_date(row.get("Payment Date"))
+            payment_status = safe_text(row.get("Payment Status"), 40) or "Pending"
+            if payment_status not in {"Pending", "Partial", "Paid", "Refunded"}:
+                raise ValueError("Payment Status is invalid")
+            if amount_received and project_amount is None:
+                raise ValueError("Project Amount is required before recording payment")
+            if project_amount is not None and amount_received > project_amount:
+                raise ValueError("Amount Received cannot exceed Project Amount")
+            if amount_received and payment_date is None:
+                raise ValueError("Payment Date is required when Amount Received is entered")
+            if payment_status == "Paid" and project_amount is not None and amount_received != project_amount:
+                raise ValueError("Paid status requires the full Project Amount")
             enquiry_store.upsert_from_sheet({
                 "enquiry_id": enquiry_id,
                 "received_at": datetime.now(timezone.utc),
                 "client_name": name, "email": email,
                 "phone": safe_text(row.get("Phone / WhatsApp"), 40),
                 "project_subject": subject, "project_details": details,
-                "project_amount": enquiry_store.parse_amount(row.get("Project Amount")),
+                "project_amount": project_amount,
+                "amount_received": amount_received,
+                "payment_date": payment_date,
+                "payment_status": payment_status,
                 "lead_status": safe_text(row.get("Lead Status"), 40) or "New",
                 "email_status": safe_text(row.get("Email Delivery"), 40) or "Manual",
                 "source": safe_text(row.get("Source"), 80) or "Google Sheet",
                 "validity": validity, "validation_notes": notes,
             }, index)
-            sheet.update_cell(index, 14, format_india_datetime())
-            sheet.update_cell(index, 15, "Synced")
+            sheet.update_cell(index, 17, format_india_datetime())
+            sheet.update_cell(index, 18, "Synced")
             result["created_or_updated"] += 1
         except Exception as exc:
             app.logger.exception("Sheet row %s failed to sync", index)
-            sheet.update_cell(index, 15, f"Error: {type(exc).__name__}"[:100])
+            sheet.update_cell(index, 18, f"Error: {type(exc).__name__}"[:100])
             result["skipped"] += 1
     return result
 
