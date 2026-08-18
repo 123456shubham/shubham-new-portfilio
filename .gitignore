@@ -1,6 +1,10 @@
 .env
+.env.*
+!.env.example
 google-service-account.json
+google-service-account.sjon
 *-service-account.json
+*-service-account.sjon
 Portfolio_Enquiries.xlsx
 venv/
 .venv/

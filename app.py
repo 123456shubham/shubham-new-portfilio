@@ -73,7 +73,7 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5-mini").strip()
 WHATSAPP_NUMBER = re.sub(
     r"\D",
     "",
-    os.getenv("WHATSAPP_NUMBER", "919999999999"),
+    os.getenv("WHATSAPP_NUMBER", "918929932706"),
 )
 
 openai_client = (
