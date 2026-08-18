@@ -270,6 +270,7 @@
             </div>
 
             <form class="contact-form reveal" method="POST" action="{{ url_for('contact') }}">
+                <input name="submission_token" type="hidden" value="{{ submission_token }}">
                 <div class="form-honeypot" aria-hidden="true">
                     <label>Company website<input name="company_website" type="text" tabindex="-1" autocomplete="off"></label>
                 </div>
@@ -287,6 +288,7 @@
                     <label>Phone / WhatsApp <small class="optional-label">Optional</small><input name="phone" type="tel" maxlength="40" inputmode="tel" placeholder="+91 98765 43210"></label>
                     <label>Project subject<input name="subject" type="text" maxlength="160" placeholder="Mobile app, ERP, website..." required></label>
                 </div>
+                <label>Estimated project amount <small class="optional-label">Optional</small><input name="project_amount" type="number" min="0" max="999999999999.99" step="0.01" inputmode="decimal" placeholder="50000"></label>
                 <label>Project details<textarea name="message" maxlength="5000" rows="6" placeholder="Explain users, features and expected platforms..." required></textarea></label>
                 <button class="button primary submit-button" type="submit">Send enquiry <i class="fa-solid fa-paper-plane"></i></button>
             </form>

@@ -14,3 +14,5 @@ portfolio.db
 .vscode/
 .idea/
 .vercel
+.agents/
+skills-lock.json

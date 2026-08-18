@@ -10,10 +10,12 @@ import json
 import html as html_lib
 import os
 import re
+import secrets
 import smtplib
 import sqlite3
 import tempfile
 import threading
+import uuid
 
 import gspread
 from openpyxl import Workbook, load_workbook
@@ -43,7 +45,10 @@ except ImportError:
 BASE_DIR = Path(__file__).resolve().parent
 RUNTIME_DATA_DIR = Path(tempfile.gettempdir()) if os.getenv("VERCEL") else BASE_DIR
 DATABASE_PATH = RUNTIME_DATA_DIR / "portfolio.db"
+load_dotenv(BASE_DIR / ".env.local")
 load_dotenv(BASE_DIR / ".env")
+
+import enquiry_store
 
 app = Flask(__name__)
 app.config.update(
@@ -152,6 +157,13 @@ EXCEL_HEADERS = [
     "Source",
     "Enquiry Validity",
     "Validation Notes",
+]
+
+SYNC_HEADERS = [
+    "Enquiry ID", "Received At", "Client Name", "Email Address",
+    "Phone / WhatsApp", "Project Subject", "Project Details", "Project Amount",
+    "Lead Status", "Email Delivery", "Source", "Enquiry Validity",
+    "Validation Notes", "Updated At", "Sync Status",
 ]
 
 
@@ -546,6 +558,114 @@ def append_enquiry_to_google_sheet(
             table_range="A:L",
         )
         return True
+
+
+def google_sheet_client():
+    if GOOGLE_SERVICE_ACCOUNT_JSON_BASE64:
+        credentials = json.loads(
+            base64.b64decode(GOOGLE_SERVICE_ACCOUNT_JSON_BASE64).decode("utf-8")
+        )
+        return gspread.service_account_from_dict(credentials)
+    if GOOGLE_SERVICE_ACCOUNT_PATH.is_file():
+        return gspread.service_account(filename=str(GOOGLE_SERVICE_ACCOUNT_PATH))
+    raise RuntimeError("Google service-account credentials are not configured")
+
+
+def synced_google_worksheet():
+    if not GOOGLE_SHEET_ID:
+        raise RuntimeError("GOOGLE_SHEET_ID is not configured")
+    spreadsheet = google_sheet_client().open_by_key(GOOGLE_SHEET_ID)
+    try:
+        sheet = spreadsheet.worksheet(GOOGLE_SHEET_NAME)
+    except gspread.WorksheetNotFound:
+        sheet = spreadsheet.add_worksheet(
+            title=GOOGLE_SHEET_NAME, rows=1000, cols=len(SYNC_HEADERS)
+        )
+    current_headers = sheet.row_values(1)
+    if current_headers == EXCEL_HEADERS:
+        sheet.insert_cols([["Project Amount"]], col=8)
+        sheet.resize(cols=len(SYNC_HEADERS))
+        current_headers = sheet.row_values(1)
+    if current_headers != SYNC_HEADERS:
+        sheet.resize(cols=len(SYNC_HEADERS))
+        sheet.update(range_name="A1:O1", values=[SYNC_HEADERS])
+        sheet.freeze(rows=1)
+        sheet.format(
+            "A1:O1",
+            {
+                "backgroundColor": {"red": 0.09, "green": 0.15, "blue": 0.33},
+                "textFormat": {"bold": True, "foregroundColor": {"red": 1, "green": 1, "blue": 1}},
+            },
+        )
+        sheet.set_basic_filter("A1:O1000")
+    return sheet
+
+
+def upsert_enquiry_to_google_sheet(record: dict[str, Any]) -> int:
+    """Idempotently update or insert one enquiry using its permanent ID."""
+    with GOOGLE_SHEET_LOCK:
+        sheet = synced_google_worksheet()
+        enquiry_id = str(record["enquiry_id"])
+        ids = sheet.col_values(1)
+        row_number = ids.index(enquiry_id) + 1 if enquiry_id in ids else len(ids) + 1
+        amount = record.get("project_amount")
+        values = [[
+            enquiry_id,
+            format_india_datetime(record.get("received_at")),
+            record.get("client_name", ""), record.get("email", ""),
+            record.get("phone", "") or "Not provided",
+            record.get("project_subject", ""), record.get("project_details", ""),
+            float(amount) if amount is not None else "",
+            record.get("lead_status", "New"), record.get("email_status", "Pending"),
+            record.get("source", "Portfolio Website"), record.get("validity", "Valid"),
+            record.get("validation_notes", ""), format_india_datetime(), "Synced",
+        ]]
+        sheet.update(range_name=f"A{row_number}:O{row_number}", values=values)
+        enquiry_store.mark_synced(enquiry_id, row_number)
+        return row_number
+
+
+def sync_google_sheet_to_database() -> dict[str, int]:
+    """Upsert manual Sheet rows into Postgres; IDs prevent duplicate records."""
+    sheet = synced_google_worksheet()
+    rows = sheet.get_all_records(expected_headers=SYNC_HEADERS)
+    result = {"created_or_updated": 0, "skipped": 0, "ids_assigned": 0}
+    for index, row in enumerate(rows, start=2):
+        name = safe_text(row.get("Client Name"), 100)
+        email = safe_text(row.get("Email Address"), 180)
+        subject = safe_text(row.get("Project Subject"), 160)
+        details = safe_text(row.get("Project Details"), 5000)
+        if not all([name, email, subject, details]) or not looks_like_email(email):
+            sheet.update_cell(index, 15, "Error: required fields or email invalid")
+            result["skipped"] += 1
+            continue
+        enquiry_id = safe_text(row.get("Enquiry ID"), 40)
+        if not enquiry_id:
+            enquiry_id = f"ENQ-{uuid.uuid4().hex[:12].upper()}"
+            sheet.update_cell(index, 1, enquiry_id)
+            result["ids_assigned"] += 1
+        validity, notes = assess_enquiry_validity(email, str(row.get("Phone / WhatsApp", "")), details)
+        try:
+            enquiry_store.upsert_from_sheet({
+                "enquiry_id": enquiry_id,
+                "received_at": datetime.now(timezone.utc),
+                "client_name": name, "email": email,
+                "phone": safe_text(row.get("Phone / WhatsApp"), 40),
+                "project_subject": subject, "project_details": details,
+                "project_amount": enquiry_store.parse_amount(row.get("Project Amount")),
+                "lead_status": safe_text(row.get("Lead Status"), 40) or "New",
+                "email_status": safe_text(row.get("Email Delivery"), 40) or "Manual",
+                "source": safe_text(row.get("Source"), 80) or "Google Sheet",
+                "validity": validity, "validation_notes": notes,
+            }, index)
+            sheet.update_cell(index, 14, format_india_datetime())
+            sheet.update_cell(index, 15, "Synced")
+            result["created_or_updated"] += 1
+        except Exception as exc:
+            app.logger.exception("Sheet row %s failed to sync", index)
+            sheet.update_cell(index, 15, f"Error: {type(exc).__name__}"[:100])
+            result["skipped"] += 1
+    return result
 
 
 def send_enquiry_email(
@@ -1032,7 +1152,12 @@ def home() -> str:
         },
     ]
 
-    return render_template("index.html", projects=projects, reviews=reviews)
+    return render_template(
+        "index.html",
+        projects=projects,
+        reviews=reviews,
+        submission_token=str(uuid.uuid4()),
+    )
 
 
 @app.post("/contact")
@@ -1046,6 +1171,7 @@ def contact() -> Response:
     phone = safe_text(request.form.get("phone"), 40)
     subject = safe_text(request.form.get("subject"), 160)
     message = safe_text(request.form.get("message"), 5000)
+    submission_token = safe_text(request.form.get("submission_token"), 36)
 
     if not all([name, email, subject, message]):
         flash("Please complete all required fields.", "error")
@@ -1055,7 +1181,62 @@ def contact() -> Response:
         flash("Please enter a valid email address.", "error")
         return redirect(url_for("home", _anchor="contact"))
 
+    try:
+        project_amount = enquiry_store.parse_amount(request.form.get("project_amount"))
+        uuid.UUID(submission_token)
+    except (ValueError, AttributeError):
+        flash("Please refresh the page and enter a valid project amount.", "error")
+        return redirect(url_for("home", _anchor="contact"))
+
     created_at = datetime.now(INDIA_TIMEZONE).isoformat(timespec="seconds")
+
+    if enquiry_store.configured():
+        validity, validation_notes = assess_enquiry_validity(email, phone, message)
+        try:
+            record, created = enquiry_store.create_enquiry({
+                "submission_token": submission_token,
+                "received_at": created_at,
+                "client_name": name,
+                "email": email,
+                "phone": phone,
+                "project_subject": subject,
+                "project_details": message,
+                "project_amount": project_amount,
+                "validity": validity,
+                "validation_notes": validation_notes,
+            })
+        except Exception:
+            app.logger.exception("Unable to save enquiry to Postgres")
+            flash("We could not save your enquiry. Please try again or use WhatsApp.", "error")
+            return redirect(url_for("home", _anchor="contact"))
+
+        if not created:
+            flash("This enquiry was already received; no duplicate was created.", "success")
+            return redirect(url_for("home", _anchor="contact"))
+
+        email_sent = False
+        try:
+            email_sent = send_enquiry_email(
+                name=name, email=email, phone=phone, subject=subject, message=message
+            )
+        except Exception:
+            app.logger.exception("Unable to deliver enquiry email")
+        enquiry_store.update_delivery(
+            record["enquiry_id"], "Sent" if email_sent else "Saved only"
+        )
+        record = enquiry_store.get_enquiry(record["enquiry_id"]) or record
+        try:
+            upsert_enquiry_to_google_sheet(record)
+        except Exception:
+            app.logger.exception("Unable to sync enquiry to Google Sheet")
+
+        flash(
+            "Thank you. Your enquiry was sent successfully."
+            if email_sent
+            else "Your enquiry was saved; email delivery will be retried.",
+            "success" if email_sent else "warning",
+        )
+        return redirect(url_for("home", _anchor="contact"))
 
     initialise_database()
     with database_connection() as connection:
@@ -1251,6 +1432,27 @@ def chat_stream() -> Response:
     )
 
 
+def sync_request_authorized() -> bool:
+    expected = os.getenv("SHEET_SYNC_SECRET", "").strip()
+    if not expected:
+        return False
+    supplied = request.headers.get("Authorization", "").removeprefix("Bearer ")
+    supplied = supplied or request.headers.get("X-Sync-Secret", "")
+    return bool(supplied) and secrets.compare_digest(supplied, expected)
+
+
+@app.route("/api/sync/google-sheet", methods=["GET", "POST"])
+def sync_google_sheet_endpoint() -> tuple[dict[str, Any], int] | dict[str, Any]:
+    if not sync_request_authorized():
+        return {"status": "error", "message": "Unauthorized"}, 401
+    try:
+        result = sync_google_sheet_to_database()
+        return {"status": "ok", **result}
+    except Exception:
+        app.logger.exception("Google Sheet reconciliation failed")
+        return {"status": "error", "message": "Synchronization failed"}, 500
+
+
 @app.get("/health")
 def health() -> dict[str, Any]:
     return {
@@ -1266,6 +1468,7 @@ def health() -> dict[str, Any]:
                 or GOOGLE_SERVICE_ACCOUNT_PATH.is_file()
             )
         ),
+        "database_configured": enquiry_store.configured(),
     }
 
 
