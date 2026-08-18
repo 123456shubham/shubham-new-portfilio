@@ -781,6 +781,7 @@ def sync_google_sheet_to_database() -> dict[str, int]:
 
 def send_enquiry_email(
     *,
+    enquiry_id: str,
     name: str,
     email: str,
     phone: str,
@@ -792,13 +793,14 @@ def send_enquiry_email(
         return False
 
     received_at = format_india_datetime()
+    h_enquiry_id = html_lib.escape(enquiry_id)
     h_name = html_lib.escape(name)
     h_email = html_lib.escape(email)
     h_phone = html_lib.escape(phone or "Not provided")
     h_subject = html_lib.escape(subject)
     h_message = html_lib.escape(message)
     owner_mail = EmailMessage()
-    owner_mail["Subject"] = f"New Portfolio Enquiry - {subject}"
+    owner_mail["Subject"] = f"[{enquiry_id}] New Portfolio Enquiry - {subject}"
     owner_mail["From"] = f"Shubham Chauhan Portfolio <{MAIL_USERNAME}>"
     owner_mail["To"] = MAIL_RECEIVER
     owner_mail["Reply-To"] = email
@@ -806,6 +808,7 @@ def send_enquiry_email(
         f"""A new enquiry was submitted from the portfolio website.
 
 CLIENT DETAILS
+Enquiry ID: {enquiry_id}
 Name: {name}
 Email: {email}
 Phone: {phone or "Not provided"}
@@ -828,6 +831,7 @@ Received: {received_at}
   </div>
   <div style="padding:28px">
     <p style="margin-top:0;color:#64748b">A new project enquiry has arrived. Reply directly to this email to contact the client.</p>
+    <div style="margin:0 0 18px;padding:14px 16px;border-radius:12px;background:#172554;color:#fff"><span style="font-size:11px;letter-spacing:1px;color:#bfdbfe">ENQUIRY ID</span><br><strong style="font-size:20px">{h_enquiry_id}</strong></div>
     <table role="presentation" style="width:100%;border-collapse:collapse;font-size:14px">
       <tr><td style="padding:9px 0;color:#64748b;width:145px">Client</td><td style="padding:9px 0;font-weight:700">{h_name}</td></tr>
       <tr><td style="padding:9px 0;color:#64748b">Email</td><td style="padding:9px 0">{h_email}</td></tr>
@@ -850,7 +854,7 @@ Received: {received_at}
         )
 
     reply_mail = EmailMessage()
-    reply_mail["Subject"] = f"Thank you for your enquiry - {subject}"
+    reply_mail["Subject"] = f"[{enquiry_id}] Your project enquiry is confirmed"
     reply_mail["From"] = f"Shubham Chauhan <{MAIL_USERNAME}>"
     reply_mail["To"] = email
     reply_mail["Reply-To"] = MAIL_RECEIVER
@@ -860,6 +864,9 @@ Received: {received_at}
 Thank you for contacting Shubham Chauhan regarding {subject}.
 
 Your enquiry has been received successfully. I will review your requirements and respond personally as soon as possible.
+
+Your Enquiry ID: {enquiry_id}
+Please keep this ID and include it in every future requirement, change request or issue related to this project.
 
 Your message:
 {message}
@@ -883,6 +890,11 @@ Mobile Apps | Web Development | Cloud & API Solutions
   <div style="padding:30px">
     <p style="font-size:16px">Hello <strong>{h_name}</strong>,</p>
     <p style="line-height:1.7;color:#475569">Thank you for contacting me regarding <strong>{h_subject}</strong>. I will review the requirements and respond personally as soon as possible.</p>
+    <div style="margin:20px 0;padding:18px;border-radius:14px;background:#172554;color:#fff;text-align:center">
+      <div style="font-size:11px;letter-spacing:1.5px;color:#bfdbfe;font-weight:700">YOUR ENQUIRY ID</div>
+      <div style="margin-top:7px;font-size:24px;font-weight:800;letter-spacing:.5px">{h_enquiry_id}</div>
+      <div style="margin-top:9px;color:#dbeafe;font-size:13px;line-height:1.5">Keep this ID safe. Mention it in every future requirement, change request or issue so your project can be found immediately.</div>
+    </div>
     <div style="margin:22px 0;padding:18px;border-radius:14px;background:#eff6ff;border:1px solid #dbeafe">
       <div style="margin-bottom:8px;color:#2563eb;font-size:12px;font-weight:700;letter-spacing:1px">YOUR ENQUIRY</div>
       <div style="white-space:pre-wrap;line-height:1.65;color:#334155">{h_message}</div>
@@ -905,10 +917,7 @@ Mobile Apps | Web Development | Cloud & API Solutions
     with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as smtp:
         smtp.login(MAIL_USERNAME, MAIL_PASSWORD)
         smtp.send_message(owner_mail)
-        try:
-            smtp.send_message(reply_mail)
-        except Exception:
-            app.logger.exception("Owner notification sent, but client auto-reply failed.")
+        smtp.send_message(reply_mail)
 
     return True
 
@@ -1328,6 +1337,7 @@ def contact() -> Response:
         email_sent = False
         try:
             email_sent = send_enquiry_email(
+                enquiry_id=record["enquiry_id"],
                 name=name, email=email, phone=phone, subject=subject, message=message
             )
         except Exception:
@@ -1365,6 +1375,7 @@ def contact() -> Response:
     email_sent = False
     try:
         email_sent = send_enquiry_email(
+            enquiry_id=f"ENQ-{int(message_id):05d}",
             name=name,
             email=email,
             phone=phone,
