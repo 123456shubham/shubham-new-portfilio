@@ -739,6 +739,7 @@ def configure_google_sheet_dashboard(spreadsheet, enquiry_sheet) -> None:
         summary = spreadsheet.worksheet("Business Summary")
     except gspread.WorksheetNotFound:
         summary = spreadsheet.add_worksheet(title="Business Summary", rows=60, cols=12)
+    summary.resize(rows=max(summary.row_count, 60), cols=max(summary.col_count, 14))
     spreadsheet.batch_update(
         {
             "requests": [
@@ -793,6 +794,85 @@ def configure_google_sheet_dashboard(spreadsheet, enquiry_sheet) -> None:
     summary.format("A9:H9", {"textFormat": {"bold": True, "fontSize": 16}})
     summary.format("A7:H7", {"backgroundColor": {"red": 0.145, "green": 0.388, "blue": 0.922}, "textFormat": {"bold": True, "foregroundColor": {"red": 1, "green": 1, "blue": 1}}})
     summary.format("A11:H13", {"backgroundColor": {"red": 0.97, "green": 0.98, "blue": 1}, "textFormat": {"foregroundColor": {"red": 0.25, "green": 0.3, "blue": 0.4}}})
+    summary.update(
+        range_name="J2:N8",
+        values=[
+            ["STATUS", "PROJECTS", "", "METRIC", "VALUE"],
+            ["New", '=COUNTIFS(Enquiries!I2:I,"New",Enquiries!L2:L,"Valid")', "", "Won", '=SUMIFS(Enquiries!H2:H,Enquiries!I2:I,"Won",Enquiries!L2:L,"Valid")'],
+            ["Contacted", '=COUNTIFS(Enquiries!I2:I,"Contacted",Enquiries!L2:L,"Valid")', "", "Lost", '=SUMIFS(Enquiries!H2:H,Enquiries!I2:I,"Lost",Enquiries!L2:L,"Valid")'],
+            ["Qualified", '=COUNTIFS(Enquiries!I2:I,"Qualified",Enquiries!L2:L,"Valid")', "", "Active", '=SUMIFS(Enquiries!H2:H,Enquiries!L2:L,"Valid",Enquiries!I2:I,"<>Won",Enquiries!I2:I,"<>Lost",Enquiries!I2:I,"<>Closed")'],
+            ["Proposal Sent", '=COUNTIFS(Enquiries!I2:I,"Proposal Sent",Enquiries!L2:L,"Valid")', "", "Total Quoted", '=SUMIFS(Enquiries!H2:H,Enquiries!L2:L,"Valid")'],
+            ["Won", '=COUNTIFS(Enquiries!I2:I,"Won",Enquiries!L2:L,"Valid")', "", "", ""],
+            ["Lost", '=COUNTIFS(Enquiries!I2:I,"Lost",Enquiries!L2:L,"Valid")', "", "", ""],
+        ],
+        value_input_option="USER_ENTERED",
+    )
+    summary.update(range_name="J9:K9", values=[["Closed", '=COUNTIFS(Enquiries!I2:I,"Closed",Enquiries!L2:L,"Valid")']], value_input_option="USER_ENTERED")
+
+    chart_metadata = spreadsheet.fetch_sheet_metadata()
+    summary_metadata = next(
+        item for item in chart_metadata["sheets"]
+        if item["properties"]["sheetId"] == summary.id
+    )
+    chart_requests = [
+        {"deleteEmbeddedObject": {"objectId": chart["chartId"]}}
+        for chart in summary_metadata.get("charts", [])
+    ]
+    chart_requests.extend(
+        [
+            {
+                "addChart": {
+                    "chart": {
+                        "spec": {
+                            "title": "Project Status Distribution",
+                            "subtitle": "Valid enquiries by current lead status",
+                            "hiddenDimensionStrategy": "SHOW_ALL",
+                            "pieChart": {
+                                "legendPosition": "RIGHT_LEGEND",
+                                "pieHole": 0.48,
+                                "domain": {"sourceRange": {"sources": [{"sheetId": summary.id, "startRowIndex": 2, "endRowIndex": 9, "startColumnIndex": 9, "endColumnIndex": 10}]}},
+                                "series": {"sourceRange": {"sources": [{"sheetId": summary.id, "startRowIndex": 2, "endRowIndex": 9, "startColumnIndex": 10, "endColumnIndex": 11}]}},
+                            },
+                        },
+                        "position": {"overlayPosition": {"anchorCell": {"sheetId": summary.id, "rowIndex": 14, "columnIndex": 0}, "widthPixels": 570, "heightPixels": 360}},
+                    }
+                }
+            },
+            {
+                "addChart": {
+                    "chart": {
+                        "spec": {
+                            "title": "Revenue & Pipeline Overview",
+                            "subtitle": "Project amounts in INR",
+                            "hiddenDimensionStrategy": "SHOW_ALL",
+                            "basicChart": {
+                                "chartType": "COLUMN",
+                                "legendPosition": "NO_LEGEND",
+                                "headerCount": 0,
+                                "axis": [
+                                    {"position": "BOTTOM_AXIS", "title": "Metric"},
+                                    {"position": "LEFT_AXIS", "title": "Amount (₹)"},
+                                ],
+                                "domains": [{"domain": {"sourceRange": {"sources": [{"sheetId": summary.id, "startRowIndex": 2, "endRowIndex": 6, "startColumnIndex": 12, "endColumnIndex": 13}]}}}],
+                                "series": [{"series": {"sourceRange": {"sources": [{"sheetId": summary.id, "startRowIndex": 2, "endRowIndex": 6, "startColumnIndex": 13, "endColumnIndex": 14}]}}, "targetAxis": "LEFT_AXIS"}],
+                            },
+                        },
+                        "position": {"overlayPosition": {"anchorCell": {"sheetId": summary.id, "rowIndex": 14, "columnIndex": 6}, "widthPixels": 570, "heightPixels": 360}},
+                    }
+                }
+            },
+        ]
+    )
+    chart_requests.append(
+        {
+            "updateDimensionProperties": {
+                "range": {"sheetId": summary.id, "dimension": "COLUMNS", "startIndex": 9, "endIndex": 14},
+                "properties": {"hiddenByUser": True},
+                "fields": "hiddenByUser",
+            }
+        }
+    )
+    spreadsheet.batch_update({"requests": chart_requests})
 
     try:
         finder = spreadsheet.worksheet("Lead Finder")
