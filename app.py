@@ -1091,19 +1091,20 @@ def contact() -> Response:
         )
         connection.commit()
 
-    try:
-        append_enquiry_to_excel(
-            enquiry_id=int(message_id),
-            created_at=created_at,
-            name=name,
-            email=email,
-            phone=phone,
-            subject=subject,
-            message=message,
-            email_status="sent" if email_sent else "saved_only",
-        )
-    except Exception:
-        app.logger.exception("Unable to update the Excel enquiry register.")
+    if not os.getenv("VERCEL"):
+        try:
+            append_enquiry_to_excel(
+                enquiry_id=int(message_id),
+                created_at=created_at,
+                name=name,
+                email=email,
+                phone=phone,
+                subject=subject,
+                message=message,
+                email_status="sent" if email_sent else "saved_only",
+            )
+        except Exception:
+            app.logger.exception("Unable to update the Excel enquiry register.")
 
     try:
         append_enquiry_to_google_sheet(
