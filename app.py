@@ -12,6 +12,7 @@ import os
 import re
 import smtplib
 import sqlite3
+import tempfile
 import threading
 
 import gspread
@@ -40,7 +41,8 @@ except ImportError:
 
 
 BASE_DIR = Path(__file__).resolve().parent
-DATABASE_PATH = BASE_DIR / "portfolio.db"
+RUNTIME_DATA_DIR = Path(tempfile.gettempdir()) if os.getenv("VERCEL") else BASE_DIR
+DATABASE_PATH = RUNTIME_DATA_DIR / "portfolio.db"
 load_dotenv(BASE_DIR / ".env")
 
 app = Flask(__name__)
@@ -54,7 +56,7 @@ MAIL_PASSWORD = os.getenv("MAIL_PASSWORD", "").replace(" ", "").strip()
 MAIL_RECEIVER = os.getenv(
     "MAIL_RECEIVER", "princechauhan31081997@gmail.com"
 ).strip()
-ENQUIRY_EXCEL_PATH = BASE_DIR / os.getenv(
+ENQUIRY_EXCEL_PATH = RUNTIME_DATA_DIR / os.getenv(
     "ENQUIRY_EXCEL_FILE", "Portfolio_Enquiries.xlsx"
 ).strip()
 EXCEL_LOCK = threading.Lock()
