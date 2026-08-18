@@ -598,7 +598,118 @@ def synced_google_worksheet():
             },
         )
         sheet.set_basic_filter("A1:O1000")
+    configure_google_sheet_dashboard(spreadsheet, sheet)
     return sheet
+
+
+def configure_google_sheet_dashboard(spreadsheet, enquiry_sheet) -> None:
+    """Keep amount/status rules and the searchable all-leads view schema-safe."""
+    spreadsheet.batch_update(
+        {
+            "requests": [
+                {
+                    "setDataValidation": {
+                        "range": {
+                            "sheetId": enquiry_sheet.id,
+                            "startRowIndex": 1,
+                            "startColumnIndex": 7,
+                            "endColumnIndex": 8,
+                        },
+                        "rule": None,
+                    }
+                },
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": enquiry_sheet.id,
+                            "startRowIndex": 1,
+                            "startColumnIndex": 7,
+                            "endColumnIndex": 8,
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "numberFormat": {"type": "CURRENCY", "pattern": "₹#,##0.00"}
+                            }
+                        },
+                        "fields": "userEnteredFormat.numberFormat",
+                    }
+                },
+                {
+                    "setDataValidation": {
+                        "range": {
+                            "sheetId": enquiry_sheet.id,
+                            "startRowIndex": 1,
+                            "startColumnIndex": 8,
+                            "endColumnIndex": 9,
+                        },
+                        "rule": {
+                            "condition": {
+                                "type": "ONE_OF_LIST",
+                                "values": [
+                                    {"userEnteredValue": value}
+                                    for value in [
+                                        "New", "Contacted", "Qualified", "Proposal Sent",
+                                        "Won", "Lost", "Closed",
+                                    ]
+                                ],
+                            },
+                            "strict": True,
+                            "showCustomUi": True,
+                        },
+                    }
+                },
+            ]
+        }
+    )
+
+    try:
+        finder = spreadsheet.worksheet("Lead Finder")
+    except gspread.WorksheetNotFound:
+        finder = spreadsheet.add_worksheet(title="Lead Finder", rows=500, cols=23)
+    finder.resize(rows=max(finder.row_count, 500), cols=max(finder.col_count, 23))
+    desired_formula = (
+        '=IF(B5="",FILTER(Enquiries!A2:O,Enquiries!A2:A<>""),'
+        'IFERROR(FILTER(Enquiries!A2:O,REGEXMATCH(LOWER(Enquiries!A2:A&" "&'
+        'Enquiries!C2:C&" "&Enquiries!D2:D&" "&Enquiries!F2:F),LOWER(B5))),'
+        '"No matching enquiries"))'
+    )
+    current_header = finder.get("A8:O8")
+    current_formula = finder.acell("A9", value_render_option="FORMULA").value
+    if current_header != [SYNC_HEADERS] or current_formula != desired_formula:
+        finder.batch_clear(["A8:W500"])
+        finder.update(
+            range_name="A3:O3",
+            values=[["All enquiries are shown below. Type an ID, client name, email or project subject in B5 to search."] + [""] * 14],
+        )
+        finder.update(range_name="A5:B5", values=[["SEARCH", ""]])
+        finder.update(range_name="A8:O8", values=[SYNC_HEADERS])
+        finder.update_acell("A9", desired_formula)
+        finder.freeze(rows=8)
+        finder.format(
+            "A8:O8",
+            {
+                "backgroundColor": {"red": 0.145, "green": 0.388, "blue": 0.922},
+                "textFormat": {"bold": True, "foregroundColor": {"red": 1, "green": 1, "blue": 1}},
+            },
+        )
+    spreadsheet.batch_update(
+        {
+            "requests": [
+                {
+                    "setDataValidation": {
+                        "range": {
+                            "sheetId": finder.id,
+                            "startRowIndex": 4,
+                            "endRowIndex": 5,
+                            "startColumnIndex": 1,
+                            "endColumnIndex": 2,
+                        },
+                        "rule": None,
+                    }
+                }
+            ]
+        }
+    )
 
 
 def upsert_enquiry_to_google_sheet(record: dict[str, Any]) -> int:
