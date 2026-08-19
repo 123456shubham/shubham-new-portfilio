@@ -163,7 +163,7 @@ function appendGmailEnquiryRow(sheet, headers, enquiry) {
     'Validation Notes': enquiry.autoSend
       ? 'Confirmed Gmail enquiry; automatic response requested'
       : 'Auto-detected from Gmail; review required before sending email',
-    'Sync Status': 'Pending', 'Currency': 'INR', 'Delivery Days': 30,
+    'Sync Status': 'Pending', 'Currency': 'INR', 'Delivery Days': 45,
     'Quotation Status': 'Pending', 'Payment Email Status': 'Pending',
     'Send Thank You': enquiry.autoSend, 'Send Quotation': enquiry.autoSend,
   };

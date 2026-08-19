@@ -195,7 +195,7 @@ def quotation_values(enquiry_id: str, project_amount: Any = None) -> dict[str, A
         "quotation_number": f"QUO-{enquiry_id.removeprefix('ENQ-')}",
         "quotation_amount": amount,
         "quotation_currency": "INR",
-        "delivery_days": 30,
+        "delivery_days": 45,
         "quotation_valid_until": date.today() + timedelta(days=7),
         "payment_terms": "40% advance, 30% after milestone, 30% before final delivery",
         "quotation_notes": (
