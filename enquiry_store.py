@@ -51,20 +51,47 @@ def initialise() -> None:
                 updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 sheet_row INTEGER,
                 sync_status TEXT NOT NULL DEFAULT 'Pending',
-                last_synced_at TIMESTAMPTZ
+                last_synced_at TIMESTAMPTZ,
+                quotation_number TEXT,
+                quotation_amount NUMERIC(14, 2),
+                quotation_currency TEXT NOT NULL DEFAULT 'INR',
+                delivery_days INTEGER,
+                quotation_valid_until DATE,
+                payment_terms TEXT NOT NULL DEFAULT '',
+                quotation_notes TEXT NOT NULL DEFAULT '',
+                quotation_status TEXT NOT NULL DEFAULT 'Pending',
+                quotation_sent_at TIMESTAMPTZ,
+                payment_due_date DATE,
+                payment_email_status TEXT NOT NULL DEFAULT 'Pending',
+                payment_receipt_sent_at TIMESTAMPTZ,
+                payment_reminder_sent_at TIMESTAMPTZ
             )
             """
         )
         conn.execute("ALTER TABLE enquiries ADD COLUMN IF NOT EXISTS amount_received NUMERIC(14, 2) NOT NULL DEFAULT 0")
         conn.execute("ALTER TABLE enquiries ADD COLUMN IF NOT EXISTS payment_date DATE")
         conn.execute("ALTER TABLE enquiries ADD COLUMN IF NOT EXISTS payment_status TEXT NOT NULL DEFAULT 'Pending'")
+        conn.execute("ALTER TABLE enquiries ADD COLUMN IF NOT EXISTS quotation_number TEXT")
+        conn.execute("ALTER TABLE enquiries ADD COLUMN IF NOT EXISTS quotation_amount NUMERIC(14, 2)")
+        conn.execute("ALTER TABLE enquiries ADD COLUMN IF NOT EXISTS quotation_currency TEXT NOT NULL DEFAULT 'INR'")
+        conn.execute("ALTER TABLE enquiries ADD COLUMN IF NOT EXISTS delivery_days INTEGER")
+        conn.execute("ALTER TABLE enquiries ADD COLUMN IF NOT EXISTS quotation_valid_until DATE")
+        conn.execute("ALTER TABLE enquiries ADD COLUMN IF NOT EXISTS payment_terms TEXT NOT NULL DEFAULT ''")
+        conn.execute("ALTER TABLE enquiries ADD COLUMN IF NOT EXISTS quotation_notes TEXT NOT NULL DEFAULT ''")
+        conn.execute("ALTER TABLE enquiries ADD COLUMN IF NOT EXISTS quotation_status TEXT NOT NULL DEFAULT 'Pending'")
+        conn.execute("ALTER TABLE enquiries ADD COLUMN IF NOT EXISTS quotation_sent_at TIMESTAMPTZ")
+        conn.execute("ALTER TABLE enquiries ADD COLUMN IF NOT EXISTS payment_due_date DATE")
+        conn.execute("ALTER TABLE enquiries ADD COLUMN IF NOT EXISTS payment_email_status TEXT NOT NULL DEFAULT 'Pending'")
+        conn.execute("ALTER TABLE enquiries ADD COLUMN IF NOT EXISTS payment_receipt_sent_at TIMESTAMPTZ")
+        conn.execute("ALTER TABLE enquiries ADD COLUMN IF NOT EXISTS payment_reminder_sent_at TIMESTAMPTZ")
         conn.execute(
             "CREATE INDEX IF NOT EXISTS enquiries_updated_at_idx ON enquiries(updated_at DESC)"
         )
 
 
 def parse_amount(value: Any) -> Decimal | None:
-    text = str(value or "").replace(",", "").replace("₹", "").strip()
+    text = str(value or "").strip().lstrip("'")
+    text = text.replace(",", "").replace("₹", "").replace("INR", "").strip()
     if not text:
         return None
     try:
@@ -86,12 +113,18 @@ def create_enquiry(data: dict[str, Any]) -> tuple[dict[str, Any], bool]:
             INSERT INTO enquiries (
                 enquiry_id, submission_token, received_at, client_name, email,
                 phone, project_subject, project_details, project_amount,
-                lead_status, email_status, source, validity, validation_notes
+                lead_status, email_status, source, validity, validation_notes,
+                quotation_number, quotation_amount, quotation_currency,
+                delivery_days, quotation_valid_until, payment_terms,
+                quotation_notes, quotation_status
             ) VALUES (
                 %(enquiry_id)s, %(submission_token)s, %(received_at)s, %(client_name)s,
                 %(email)s, %(phone)s, %(project_subject)s, %(project_details)s,
                 %(project_amount)s, 'New', 'Pending', 'Portfolio Website',
-                %(validity)s, %(validation_notes)s
+                %(validity)s, %(validation_notes)s, %(quotation_number)s,
+                %(quotation_amount)s, %(quotation_currency)s, %(delivery_days)s,
+                %(quotation_valid_until)s, %(payment_terms)s,
+                %(quotation_notes)s, 'Pending'
             )
             ON CONFLICT (submission_token) DO NOTHING
             RETURNING *
@@ -111,6 +144,51 @@ def update_delivery(enquiry_id: str, email_status: str) -> None:
         conn.execute(
             "UPDATE enquiries SET email_status=%s, updated_at=NOW() WHERE enquiry_id=%s",
             (email_status, enquiry_id),
+        )
+
+
+def update_quotation_delivery(enquiry_id: str, status: str) -> None:
+    with connection() as conn:
+        conn.execute(
+            """UPDATE enquiries SET quotation_status=%s,
+               quotation_sent_at=CASE WHEN %s='Sent' THEN NOW() ELSE quotation_sent_at END,
+               lead_status=CASE WHEN %s='Sent' THEN 'Proposal Sent' ELSE lead_status END,
+               updated_at=NOW() WHERE enquiry_id=%s""",
+            (status, status, status, enquiry_id),
+        )
+
+
+def mark_payment_receipt_sent(enquiry_id: str) -> None:
+    with connection() as conn:
+        conn.execute(
+            """UPDATE enquiries SET payment_email_status='Receipt Sent',
+               payment_receipt_sent_at=NOW(), updated_at=NOW()
+               WHERE enquiry_id=%s""",
+            (enquiry_id,),
+        )
+
+
+def mark_payment_reminder_sent(enquiry_id: str) -> None:
+    with connection() as conn:
+        conn.execute(
+            """UPDATE enquiries SET payment_email_status='Reminder Sent',
+               payment_reminder_sent_at=NOW(), updated_at=NOW()
+               WHERE enquiry_id=%s""",
+            (enquiry_id,),
+        )
+
+
+def reset_payment_reminder(enquiry_id: str) -> None:
+    """Allow one fresh automatic reminder after the due date is edited."""
+    with connection() as conn:
+        conn.execute(
+            """UPDATE enquiries SET payment_reminder_sent_at=NULL,
+               payment_email_status=CASE
+                   WHEN payment_email_status='Reminder Sent' THEN 'Pending'
+                   ELSE payment_email_status
+               END,
+               updated_at=NOW() WHERE enquiry_id=%s""",
+            (enquiry_id,),
         )
 
 
@@ -135,12 +213,21 @@ def upsert_from_sheet(data: dict[str, Any], sheet_row: int) -> dict[str, Any]:
                 project_details, project_amount, amount_received, payment_date,
                 payment_status, lead_status, email_status, source,
                 validity, validation_notes, updated_at, sheet_row, sync_status, last_synced_at
+                , quotation_number, quotation_amount, quotation_currency, delivery_days,
+                quotation_valid_until, payment_terms, quotation_notes, quotation_status,
+                quotation_sent_at, payment_due_date, payment_email_status,
+                payment_receipt_sent_at, payment_reminder_sent_at
             ) VALUES (
                 %(enquiry_id)s, %(received_at)s, %(client_name)s, %(email)s, %(phone)s,
                 %(project_subject)s, %(project_details)s, %(project_amount)s,
                 %(amount_received)s, %(payment_date)s, %(payment_status)s,
                 %(lead_status)s, %(email_status)s, %(source)s, %(validity)s,
-                %(validation_notes)s, NOW(), %(sheet_row)s, 'Synced', NOW()
+                %(validation_notes)s, NOW(), %(sheet_row)s, 'Synced', NOW(),
+                %(quotation_number)s, %(quotation_amount)s, %(quotation_currency)s,
+                %(delivery_days)s, %(quotation_valid_until)s, %(payment_terms)s,
+                %(quotation_notes)s, %(quotation_status)s, %(quotation_sent_at)s
+                , %(payment_due_date)s, %(payment_email_status)s,
+                %(payment_receipt_sent_at)s, %(payment_reminder_sent_at)s
             )
             ON CONFLICT (enquiry_id) DO UPDATE SET
                 client_name=EXCLUDED.client_name, email=EXCLUDED.email,
@@ -153,6 +240,19 @@ def upsert_from_sheet(data: dict[str, Any], sheet_row: int) -> dict[str, Any]:
                 lead_status=EXCLUDED.lead_status,
                 email_status=EXCLUDED.email_status, source=EXCLUDED.source,
                 validity=EXCLUDED.validity, validation_notes=EXCLUDED.validation_notes,
+                quotation_number=EXCLUDED.quotation_number,
+                quotation_amount=EXCLUDED.quotation_amount,
+                quotation_currency=EXCLUDED.quotation_currency,
+                delivery_days=EXCLUDED.delivery_days,
+                quotation_valid_until=EXCLUDED.quotation_valid_until,
+                payment_terms=EXCLUDED.payment_terms,
+                quotation_notes=EXCLUDED.quotation_notes,
+                quotation_status=EXCLUDED.quotation_status,
+                quotation_sent_at=COALESCE(EXCLUDED.quotation_sent_at, enquiries.quotation_sent_at),
+                payment_due_date=EXCLUDED.payment_due_date,
+                payment_email_status=EXCLUDED.payment_email_status,
+                payment_receipt_sent_at=COALESCE(EXCLUDED.payment_receipt_sent_at, enquiries.payment_receipt_sent_at),
+                payment_reminder_sent_at=COALESCE(EXCLUDED.payment_reminder_sent_at, enquiries.payment_reminder_sent_at),
                 updated_at=NOW(), sheet_row=EXCLUDED.sheet_row,
                 sync_status='Synced', last_synced_at=NOW()
             RETURNING *

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from email.message import EmailMessage
 from pathlib import Path
 from typing import Any
@@ -146,7 +146,7 @@ def format_india_datetime(value: str | datetime | None = None) -> str:
 
 def parse_payment_date(value: Any) -> date | None:
     text = str(value or "").strip()
-    if not text:
+    if not text or text.lower() in {"false", "none", "null"}:
         return None
     for pattern in ("%Y-%m-%d", "%d/%m/%Y", "%m/%d/%Y", "%d %b %Y"):
         try:
@@ -177,7 +177,34 @@ SYNC_HEADERS = [
     "Amount Received", "Payment Date", "Payment Status", "Lead Status",
     "Email Delivery", "Source", "Enquiry Validity", "Validation Notes",
     "Updated At", "Sync Status",
+    "Quotation Number", "Quotation Amount", "Currency", "Delivery Days",
+    "Valid Until", "Payment Terms", "Quotation Notes", "Quotation Status",
+    "Quotation Sent At", "Send Thank You", "Send Quotation",
+    "Payment Due Date", "Pending Amount", "Payment Email Status",
+    "Payment Receipt Sent At", "Payment Reminder Sent At",
+    "Send Payment Receipt", "Send Payment Reminder",
 ]
+
+SYNC_COLUMN = {header: index + 1 for index, header in enumerate(SYNC_HEADERS)}
+
+
+def quotation_values(enquiry_id: str, project_amount: Any = None) -> dict[str, Any]:
+    """Build safe editable defaults for an initial project quotation."""
+    amount = enquiry_store.parse_amount(project_amount)
+    return {
+        "quotation_number": f"QUO-{enquiry_id.removeprefix('ENQ-')}",
+        "quotation_amount": amount,
+        "quotation_currency": "INR",
+        "delivery_days": 30,
+        "quotation_valid_until": date.today() + timedelta(days=7),
+        "payment_terms": "40% advance, 30% after milestone, 30% before final delivery",
+        "quotation_notes": (
+            "Preliminary quotation based on the submitted requirements. "
+            "Final scope, timeline and price will be confirmed after discussion."
+        ),
+        "quotation_status": "Pending",
+        "quotation_sent_at": None,
+    }
 
 
 def assess_enquiry_validity(email: str, phone: str, message: str) -> tuple[str, str]:
@@ -222,7 +249,7 @@ def style_enquiry_sheet(sheet) -> None:
     sheet["C1"].alignment = Alignment(horizontal="left", vertical="center")
 
     sheet.merge_cells("C2:L2")
-    sheet["C2"] = "Professional lead register | Shubham Chauhan, Software Engineer"
+    sheet["C2"] = "Professional lead register | Shubham Chauhan, Full Stack Developer"
     sheet["C2"].font = Font(name="Aptos", size=10, italic=True, color="CBD5E1")
     sheet["C2"].alignment = Alignment(vertical="center")
     for row in sheet.iter_rows(min_row=1, max_row=3, min_col=1, max_col=12):
@@ -599,9 +626,17 @@ def synced_google_worksheet():
         sheet.insert_cols([["Project Amount"]], col=8)
         sheet.resize(cols=len(SYNC_HEADERS))
         current_headers = sheet.row_values(1)
+    if (
+        "Send Thank You" not in current_headers
+        and current_headers
+        and current_headers[-1] == "Send Quotation"
+    ):
+        sheet.insert_cols([["Send Thank You"]], col=SYNC_COLUMN["Send Thank You"])
+        sheet.resize(cols=len(SYNC_HEADERS))
+        current_headers = sheet.row_values(1)
     if current_headers != SYNC_HEADERS:
         sheet.resize(cols=len(SYNC_HEADERS))
-        sheet.update(range_name="A1:R1", values=[SYNC_HEADERS])
+        sheet.update(range_name="A1:AJ1", values=[SYNC_HEADERS])
         sheet.freeze(rows=1)
         sheet.format(
             "A1:R1",
@@ -610,9 +645,150 @@ def synced_google_worksheet():
                 "textFormat": {"bold": True, "foregroundColor": {"red": 1, "green": 1, "blue": 1}},
             },
         )
-        sheet.set_basic_filter("A1:R1000")
+        sheet.set_basic_filter("A1:AJ1000")
+        style_synced_enquiry_sheet(spreadsheet, sheet)
+    spreadsheet.batch_update({"requests": [{
+        "setDataValidation": {
+            "range": {
+                "sheetId": sheet.id, "startRowIndex": 1,
+                "endRowIndex": sheet.row_count,
+                "startColumnIndex": SYNC_COLUMN["Send Thank You"] - 1,
+                "endColumnIndex": SYNC_COLUMN["Send Quotation"],
+            },
+            "rule": {
+                "condition": {"type": "BOOLEAN"},
+                "strict": True, "showCustomUi": True,
+            },
+        }
+    }, {
+        "setDataValidation": {
+            "range": {
+                "sheetId": sheet.id, "startRowIndex": 1,
+                "endRowIndex": sheet.row_count,
+                "startColumnIndex": SYNC_COLUMN["Send Payment Receipt"] - 1,
+                "endColumnIndex": SYNC_COLUMN["Send Payment Reminder"],
+            },
+            "rule": {
+                "condition": {"type": "BOOLEAN"},
+                "strict": True, "showCustomUi": True,
+            },
+        }
+    }]})
     configure_google_sheet_dashboard(spreadsheet, sheet)
+    configure_requirements_sheet(spreadsheet)
     return sheet
+
+
+def configure_requirements_sheet(spreadsheet) -> None:
+    """Maintain a polished requirements view backed by the Enquiries sheet."""
+    try:
+        requirements = spreadsheet.worksheet("Requirements")
+    except gspread.WorksheetNotFound:
+        requirements = spreadsheet.add_worksheet(title="Requirements", rows=1000, cols=15)
+    requirements.resize(rows=max(requirements.row_count, 1000), cols=15)
+    formula = (
+        '=QUERY(Enquiries!A:Z,"select A,B,C,D,E,F,G,S,T,U,V,W,X,Y,Z '
+        'where A is not null",1)'
+    )
+    current_formula = requirements.acell("A1", value_render_option="FORMULA").value
+    if current_formula != formula:
+        requirements.clear()
+        requirements.update_acell("A1", formula)
+    requirements.freeze(rows=1, cols=2)
+    requirements.format("A1:O1", {
+        "backgroundColor": {"red": 0.09, "green": 0.15, "blue": 0.33},
+        "textFormat": {
+            "bold": True, "fontSize": 10,
+            "foregroundColor": {"red": 1, "green": 1, "blue": 1},
+        },
+        "horizontalAlignment": "CENTER", "verticalAlignment": "MIDDLE",
+        "wrapStrategy": "WRAP",
+    })
+    requirements.format("A2:O1000", {
+        "verticalAlignment": "MIDDLE", "wrapStrategy": "WRAP",
+        "textFormat": {"fontSize": 10},
+    })
+    widths = [155, 155, 175, 220, 150, 220, 380, 165, 140, 90, 115, 130, 290, 310, 140]
+    spreadsheet.batch_update({"requests": [{
+        "updateDimensionProperties": {
+            "range": {
+                "sheetId": requirements.id, "dimension": "COLUMNS",
+                "startIndex": index, "endIndex": index + 1,
+            },
+            "properties": {"pixelSize": width}, "fields": "pixelSize",
+        }
+    } for index, width in enumerate(widths)]})
+
+
+def style_synced_enquiry_sheet(spreadsheet, sheet) -> None:
+    """Apply a compact CRM-style layout without changing enquiry data."""
+    sheet.freeze(rows=1, cols=2)
+    sheet.format("A1:AJ1", {
+        "backgroundColor": {"red": 0.055, "green": 0.102, "blue": 0.216},
+        "textFormat": {
+            "bold": True,
+            "fontSize": 10,
+            "foregroundColor": {"red": 1, "green": 1, "blue": 1},
+        },
+        "horizontalAlignment": "CENTER",
+        "verticalAlignment": "MIDDLE",
+        "wrapStrategy": "WRAP",
+    })
+    sheet.format("A2:AJ1000", {
+        "backgroundColor": {"red": 1, "green": 1, "blue": 1},
+        "verticalAlignment": "MIDDLE",
+        "wrapStrategy": "WRAP",
+        "textFormat": {"fontSize": 10, "foregroundColor": {
+            "red": 0.118, "green": 0.161, "blue": 0.231,
+        }},
+    })
+    # Finance and quotation blocks use distinct header colours for quick scanning.
+    sheet.format("H1:K1", {"backgroundColor": {
+        "red": 0.11, "green": 0.35, "blue": 0.75,
+    }})
+    sheet.format("S1:AC1", {"backgroundColor": {
+        "red": 0.145, "green": 0.388, "blue": 0.922,
+    }})
+    sheet.format("AD1:AJ1", {"backgroundColor": {
+        "red": 0.035, "green": 0.22, "blue": 0.52,
+    }})
+    for editable_range in ("J2:J1000", "W2:W1000", "AD2:AD1000", "AB2:AC1000", "AI2:AJ1000"):
+        sheet.format(editable_range, {
+            "backgroundColor": {"red": 0.937, "green": 0.965, "blue": 1},
+            "textFormat": {"foregroundColor": {"red": 0.055, "green": 0.102, "blue": 0.216}},
+        })
+    widths = [
+        155, 155, 175, 220, 150, 220, 380, 130, 130, 125, 130, 140,
+        125, 150, 130, 280, 165, 125, 165, 140, 90, 115, 130, 290, 310,
+        140, 170, 135, 135, 135, 145, 170, 175, 185, 155, 165,
+    ]
+    requests = [{
+        "updateDimensionProperties": {
+            "range": {
+                "sheetId": sheet.id, "dimension": "ROWS",
+                "startIndex": 0, "endIndex": 1,
+            },
+            "properties": {"pixelSize": 52}, "fields": "pixelSize",
+        }
+    }, {
+        "updateDimensionProperties": {
+            "range": {
+                "sheetId": sheet.id, "dimension": "ROWS",
+                "startIndex": 1, "endIndex": min(sheet.row_count, 1000),
+            },
+            "properties": {"pixelSize": 44}, "fields": "pixelSize",
+        }
+    }]
+    requests.extend({
+        "updateDimensionProperties": {
+            "range": {
+                "sheetId": sheet.id, "dimension": "COLUMNS",
+                "startIndex": index, "endIndex": index + 1,
+            },
+            "properties": {"pixelSize": width}, "fields": "pixelSize",
+        }
+    } for index, width in enumerate(widths))
+    spreadsheet.batch_update({"requests": requests})
 
 
 def configure_google_sheet_dashboard(spreadsheet, enquiry_sheet) -> None:
@@ -620,6 +796,60 @@ def configure_google_sheet_dashboard(spreadsheet, enquiry_sheet) -> None:
     spreadsheet.batch_update(
         {
             "requests": [
+                *[
+                    {
+                        "setDataValidation": {
+                            "range": {
+                                "sheetId": enquiry_sheet.id,
+                                "startRowIndex": 1,
+                                "startColumnIndex": SYNC_COLUMN[header] - 1,
+                                "endColumnIndex": SYNC_COLUMN[header],
+                            },
+                            "rule": {
+                                "condition": {"type": "DATE_IS_VALID"},
+                                "strict": True,
+                                "showCustomUi": True,
+                            },
+                        }
+                    }
+                    for header in ("Payment Date", "Valid Until", "Payment Due Date")
+                ],
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": enquiry_sheet.id,
+                            "startRowIndex": 1,
+                            "startColumnIndex": SYNC_COLUMN["Payment Due Date"] - 1,
+                            "endColumnIndex": SYNC_COLUMN["Payment Due Date"],
+                        },
+                        "cell": {"userEnteredFormat": {"numberFormat": {"type": "DATE", "pattern": "dd mmm yyyy"}}},
+                        "fields": "userEnteredFormat.numberFormat",
+                    }
+                },
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": enquiry_sheet.id,
+                            "startRowIndex": 1,
+                            "startColumnIndex": SYNC_COLUMN["Valid Until"] - 1,
+                            "endColumnIndex": SYNC_COLUMN["Valid Until"],
+                        },
+                        "cell": {"userEnteredFormat": {"numberFormat": {"type": "DATE", "pattern": "dd mmm yyyy"}}},
+                        "fields": "userEnteredFormat.numberFormat",
+                    }
+                },
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": enquiry_sheet.id,
+                            "startRowIndex": 1,
+                            "startColumnIndex": SYNC_COLUMN["Pending Amount"] - 1,
+                            "endColumnIndex": SYNC_COLUMN["Pending Amount"],
+                        },
+                        "cell": {"userEnteredFormat": {"numberFormat": {"type": "CURRENCY", "pattern": "₹#,##0.00"}}},
+                        "fields": "userEnteredFormat.numberFormat",
+                    }
+                },
                 {
                     "repeatCell": {
                         "range": {
@@ -711,7 +941,7 @@ def configure_google_sheet_dashboard(spreadsheet, enquiry_sheet) -> None:
         finder = spreadsheet.worksheet("Lead Finder")
     except gspread.WorksheetNotFound:
         finder = spreadsheet.add_worksheet(title="Lead Finder", rows=500, cols=23)
-    finder.resize(rows=max(finder.row_count, 500), cols=max(finder.col_count, 23))
+    finder.resize(rows=max(finder.row_count, 500), cols=len(SYNC_HEADERS))
     metadata = spreadsheet.fetch_sheet_metadata()
     finder_metadata = next(
         item for item in metadata["sheets"]
@@ -856,11 +1086,11 @@ def configure_google_sheet_dashboard(spreadsheet, enquiry_sheet) -> None:
     summary.update(range_name="J9:K9", values=[["Closed", '=COUNTIFS(Enquiries!L2:L,"Closed",Enquiries!O2:O,"Valid")']], value_input_option="USER_ENTERED")
     summary.update_acell(
         "P2",
-        '=QUERY({TEXT(Enquiries!J2:J,"MMM YYYY"),Enquiries!I2:I,Enquiries!O2:O},"select Col1,sum(Col2) where Col1 is not null and Col3 = \'Valid\' group by Col1 label Col1 \'Month\',sum(Col2) \'Income\'",0)',
+        '=IFERROR(QUERY({ARRAYFORMULA(IF(Enquiries!J2:J="","",TEXT(Enquiries!J2:J,"MMM YYYY"))),Enquiries!I2:I,Enquiries!O2:O},"select Col1,sum(Col2) where Col1 is not null and Col3 = \'Valid\' group by Col1 label Col1 \'Month\',sum(Col2) \'Income\'",0),{"Month","Income"})',
     )
     summary.update_acell(
         "S2",
-        '=QUERY({Enquiries!F2:F,Enquiries!I2:I,Enquiries!O2:O},"select Col1,sum(Col2) where Col1 is not null and Col3 = \'Valid\' group by Col1 order by sum(Col2) desc limit 10 label Col1 \'Project\',sum(Col2) \'Received\'",0)',
+        '=IFERROR(QUERY({Enquiries!F2:F,Enquiries!I2:I,Enquiries!O2:O},"select Col1,sum(Col2) where Col1 is not null and Col3 = \'Valid\' group by Col1 order by sum(Col2) desc limit 10 label Col1 \'Project\',sum(Col2) \'Received\'",0),{"Project","Received"})',
     )
 
     chart_metadata = spreadsheet.fetch_sheet_metadata()
@@ -957,25 +1187,25 @@ def configure_google_sheet_dashboard(spreadsheet, enquiry_sheet) -> None:
         finder = spreadsheet.add_worksheet(title="Lead Finder", rows=500, cols=23)
     finder.resize(rows=max(finder.row_count, 500), cols=max(finder.col_count, 23))
     desired_formula = (
-        '=IF(B5="",IFERROR(FILTER(Enquiries!A2:R,Enquiries!A2:A<>""),"No enquiries yet"),'
-        'IFERROR(FILTER(Enquiries!A2:R,REGEXMATCH(LOWER(Enquiries!A2:A&" "&'
+        '=IF(B5="",IFERROR(FILTER(Enquiries!A2:AJ,Enquiries!A2:A<>""),"No enquiries yet"),'
+        'IFERROR(FILTER(Enquiries!A2:AJ,REGEXMATCH(LOWER(Enquiries!A2:A&" "&'
         'Enquiries!C2:C&" "&Enquiries!D2:D&" "&Enquiries!F2:F),LOWER(B5))),'
         '"No matching enquiries"))'
     )
-    current_header = finder.get("A8:R8")
+    current_header = finder.get("A8:AJ8")
     current_formula = finder.acell("A9", value_render_option="FORMULA").value
     if current_header != [SYNC_HEADERS] or current_formula != desired_formula:
-        finder.batch_clear(["A8:W500"])
+        finder.batch_clear(["A8:AJ500"])
         finder.update(
             range_name="A3:O3",
             values=[["All enquiries are shown below. Type an ID, client name, email or project subject in B5 to search."] + [""] * 14],
         )
         finder.update(range_name="A5:B5", values=[["SEARCH", ""]])
-        finder.update(range_name="A8:R8", values=[SYNC_HEADERS])
+        finder.update(range_name="A8:AJ8", values=[SYNC_HEADERS])
         finder.update_acell("A9", desired_formula)
         finder.freeze(rows=8)
         finder.format(
-            "A8:R8",
+            "A8:AJ8",
             {
                 "backgroundColor": {"red": 0.145, "green": 0.388, "blue": 0.922},
                 "textFormat": {"bold": True, "foregroundColor": {"red": 1, "green": 1, "blue": 1}},
@@ -1010,6 +1240,7 @@ def upsert_enquiry_to_google_sheet(record: dict[str, Any]) -> int:
         row_number = ids.index(enquiry_id) + 1 if enquiry_id in ids else len(ids) + 1
         amount = record.get("project_amount")
         amount_received = record.get("amount_received")
+        pending_amount = max((amount or 0) - (amount_received or 0), 0) if amount is not None else ""
         values = [[
             enquiry_id,
             format_india_datetime(record.get("received_at")),
@@ -1022,8 +1253,21 @@ def upsert_enquiry_to_google_sheet(record: dict[str, Any]) -> int:
             record.get("lead_status", "New"), record.get("email_status", "Pending"),
             record.get("source", "Portfolio Website"), record.get("validity", "Valid"),
             record.get("validation_notes", ""), format_india_datetime(), "Synced",
+            record.get("quotation_number", ""),
+            float(record["quotation_amount"]) if record.get("quotation_amount") is not None else "",
+            record.get("quotation_currency", "INR"), record.get("delivery_days", ""),
+            str(record.get("quotation_valid_until") or ""), record.get("payment_terms", ""),
+            record.get("quotation_notes", ""), record.get("quotation_status", "Pending"),
+            format_india_datetime(record.get("quotation_sent_at")) if record.get("quotation_sent_at") else "",
+            "", "",
+            str(record.get("payment_due_date") or ""),
+            float(pending_amount) if pending_amount != "" else "",
+            record.get("payment_email_status", "Pending"),
+            format_india_datetime(record.get("payment_receipt_sent_at")) if record.get("payment_receipt_sent_at") else "",
+            format_india_datetime(record.get("payment_reminder_sent_at")) if record.get("payment_reminder_sent_at") else "",
+            "", "",
         ]]
-        sheet.update(range_name=f"A{row_number}:R{row_number}", values=values)
+        sheet.update(range_name=f"A{row_number}:AJ{row_number}", values=values)
         enquiry_store.mark_synced(enquiry_id, row_number)
         return row_number
 
@@ -1038,8 +1282,14 @@ def sync_google_sheet_to_database() -> dict[str, int]:
         email = safe_text(row.get("Email Address"), 180)
         subject = safe_text(row.get("Project Subject"), 160)
         details = safe_text(row.get("Project Details"), 5000)
+        # Formatting or stale status text can make an otherwise empty row appear
+        # in get_all_records(); silently clear it instead of displaying an error.
+        if not any([name, email, subject, details, safe_text(row.get("Phone / WhatsApp"), 40)]):
+            if row.get("Sync Status"):
+                sheet.update_cell(index, SYNC_COLUMN["Sync Status"], "")
+            continue
         if not all([name, email, subject, details]) or not looks_like_email(email):
-            sheet.update_cell(index, 18, "Error: required fields or email invalid")
+            sheet.update_cell(index, SYNC_COLUMN["Sync Status"], "Error: required fields or email invalid")
             result["skipped"] += 1
             continue
         enquiry_id = safe_text(row.get("Enquiry ID"), 40)
@@ -1047,12 +1297,14 @@ def sync_google_sheet_to_database() -> dict[str, int]:
             enquiry_id = f"ENQ-{uuid.uuid4().hex[:12].upper()}"
             sheet.update_cell(index, 1, enquiry_id)
             result["ids_assigned"] += 1
+        existing_record = enquiry_store.get_enquiry(enquiry_id)
         validity, notes = assess_enquiry_validity(email, str(row.get("Phone / WhatsApp", "")), details)
         try:
             project_amount = enquiry_store.parse_amount(row.get("Project Amount"))
             amount_received = enquiry_store.parse_amount(row.get("Amount Received")) or 0
             payment_date = parse_payment_date(row.get("Payment Date"))
             payment_status = safe_text(row.get("Payment Status"), 40) or "Pending"
+            payment_due_date = parse_payment_date(row.get("Payment Due Date"))
             if payment_status not in {"Pending", "Partial", "Paid", "Refunded"}:
                 raise ValueError("Payment Status is invalid")
             if amount_received and project_amount is None:
@@ -1063,6 +1315,42 @@ def sync_google_sheet_to_database() -> dict[str, int]:
                 raise ValueError("Payment Date is required when Amount Received is entered")
             if payment_status == "Paid" and project_amount is not None and amount_received != project_amount:
                 raise ValueError("Paid status requires the full Project Amount")
+            quote_defaults = quotation_values(enquiry_id, project_amount)
+            quotation_amount = enquiry_store.parse_amount(row.get("Quotation Amount"))
+            if quotation_amount is None:
+                quotation_amount = project_amount
+            delivery_days_text = str(row.get("Delivery Days") or quote_defaults["delivery_days"]).strip()
+            delivery_days = int(float(delivery_days_text))
+            if not 1 <= delivery_days <= 3650:
+                raise ValueError("Delivery Days must be between 1 and 3650")
+            valid_until = parse_payment_date(row.get("Valid Until")) or quote_defaults["quotation_valid_until"]
+            quotation_status = safe_text(row.get("Quotation Status"), 40) or "Pending"
+            if quotation_status not in {"Pending", "Sent", "Failed", "Accepted", "Rejected"}:
+                raise ValueError("Quotation Status is invalid")
+            thank_you_requested = str(row.get("Send Thank You") or "").strip().upper() in {
+                "TRUE", "SEND", "YES", "1",
+            }
+            quotation_requested = str(row.get("Send Quotation") or "").strip().upper() in {
+                "TRUE", "SEND", "YES", "1",
+            }
+            receipt_requested = str(row.get("Send Payment Receipt") or "").strip().upper() in {
+                "TRUE", "SEND", "YES", "1",
+            }
+            reminder_requested = str(row.get("Send Payment Reminder") or "").strip().upper() in {
+                "TRUE", "SEND", "YES", "1",
+            }
+            previous_received = enquiry_store.parse_amount(
+                existing_record.get("amount_received") if existing_record else None
+            ) or 0
+            pending_amount = (
+                max(project_amount - amount_received, 0)
+                if project_amount is not None else None
+            )
+            payment_email_status = (
+                safe_text(row.get("Payment Email Status"), 60)
+                or safe_text(existing_record.get("payment_email_status") if existing_record else None, 60)
+                or "Pending"
+            )
             enquiry_store.upsert_from_sheet({
                 "enquiry_id": enquiry_id,
                 "received_at": datetime.now(timezone.utc),
@@ -1077,13 +1365,97 @@ def sync_google_sheet_to_database() -> dict[str, int]:
                 "email_status": safe_text(row.get("Email Delivery"), 40) or "Manual",
                 "source": safe_text(row.get("Source"), 80) or "Google Sheet",
                 "validity": validity, "validation_notes": notes,
+                "quotation_number": safe_text(row.get("Quotation Number"), 60) or quote_defaults["quotation_number"],
+                "quotation_amount": quotation_amount,
+                "quotation_currency": safe_text(row.get("Currency"), 10).upper() or "INR",
+                "delivery_days": delivery_days,
+                "quotation_valid_until": valid_until,
+                "payment_terms": safe_text(row.get("Payment Terms"), 500) or quote_defaults["payment_terms"],
+                "quotation_notes": safe_text(row.get("Quotation Notes"), 1000) or quote_defaults["quotation_notes"],
+                "quotation_status": quotation_status,
+                "quotation_sent_at": None,
+                "payment_due_date": payment_due_date,
+                "payment_email_status": payment_email_status,
+                "payment_receipt_sent_at": existing_record.get("payment_receipt_sent_at") if existing_record else None,
+                "payment_reminder_sent_at": existing_record.get("payment_reminder_sent_at") if existing_record else None,
             }, index)
-            sheet.update_cell(index, 17, format_india_datetime())
-            sheet.update_cell(index, 18, "Synced")
+            due_date_changed = bool(
+                existing_record
+                and existing_record.get("payment_due_date") != payment_due_date
+            )
+            if due_date_changed:
+                enquiry_store.reset_payment_reminder(enquiry_id)
+            saved_record = enquiry_store.get_enquiry(enquiry_id)
+            if thank_you_requested and saved_record:
+                thank_you_sent = send_enquiry_email(
+                    enquiry_id=enquiry_id,
+                    name=name,
+                    email=email,
+                    phone=safe_text(row.get("Phone / WhatsApp"), 40),
+                    subject=subject,
+                    message=details,
+                    notify_owner=False,
+                )
+                delivery_status = "Sent" if thank_you_sent else "Failed"
+                enquiry_store.update_delivery(enquiry_id, delivery_status)
+                sheet.update_cell(index, SYNC_COLUMN["Email Delivery"], delivery_status)
+                sheet.batch_clear([f"AB{index}"])
+            if quotation_requested:
+                quotation_sent = bool(saved_record) and send_quotation_email(saved_record)
+                quotation_status = "Sent" if quotation_sent else "Failed"
+                enquiry_store.update_quotation_delivery(enquiry_id, quotation_status)
+                sheet.update_cell(index, SYNC_COLUMN["Quotation Status"], quotation_status)
+                sheet.update_cell(
+                    index, SYNC_COLUMN["Quotation Sent At"],
+                    format_india_datetime() if quotation_sent else "",
+                )
+                sheet.batch_clear([f"AC{index}"])
+            saved_record = enquiry_store.get_enquiry(enquiry_id)
+            auto_receipt = amount_received > previous_received
+            if saved_record and (receipt_requested or auto_receipt):
+                receipt_sent = send_payment_email(
+                    saved_record,
+                    kind="receipt",
+                    received_amount=(amount_received - previous_received) if auto_receipt else amount_received,
+                )
+                if receipt_sent:
+                    enquiry_store.mark_payment_receipt_sent(enquiry_id)
+                    payment_email_status = "Receipt Sent"
+                    sheet.update_cell(index, SYNC_COLUMN["Payment Receipt Sent At"], format_india_datetime())
+                else:
+                    payment_email_status = "Receipt Failed"
+                sheet.batch_clear([f"AI{index}"])
+            overdue = bool(
+                payment_due_date
+                and payment_due_date < datetime.now(INDIA_TIMEZONE).date()
+                and pending_amount is not None
+                and pending_amount > 0
+            )
+            reminder_already_sent = bool(
+                existing_record
+                and existing_record.get("payment_reminder_sent_at")
+                and not due_date_changed
+            )
+            if saved_record and (reminder_requested or (overdue and not reminder_already_sent)):
+                reminder_sent = send_payment_email(saved_record, kind="reminder")
+                if reminder_sent:
+                    enquiry_store.mark_payment_reminder_sent(enquiry_id)
+                    payment_email_status = "Reminder Sent"
+                    sheet.update_cell(index, SYNC_COLUMN["Payment Reminder Sent At"], format_india_datetime())
+                else:
+                    payment_email_status = "Reminder Failed"
+                sheet.batch_clear([f"AJ{index}"])
+            sheet.update_cell(
+                index, SYNC_COLUMN["Pending Amount"],
+                float(pending_amount) if pending_amount is not None else "",
+            )
+            sheet.update_cell(index, SYNC_COLUMN["Payment Email Status"], payment_email_status)
+            sheet.update_cell(index, SYNC_COLUMN["Updated At"], format_india_datetime())
+            sheet.update_cell(index, SYNC_COLUMN["Sync Status"], "Synced")
             result["created_or_updated"] += 1
         except Exception as exc:
             app.logger.exception("Sheet row %s failed to sync", index)
-            sheet.update_cell(index, 18, f"Error: {type(exc).__name__}"[:100])
+            sheet.update_cell(index, SYNC_COLUMN["Sync Status"], f"Error: {type(exc).__name__}"[:100])
             result["skipped"] += 1
     return result
 
@@ -1096,6 +1468,7 @@ def send_enquiry_email(
     phone: str,
     subject: str,
     message: str,
+    notify_owner: bool = True,
 ) -> bool:
     if not all([MAIL_USERNAME, MAIL_PASSWORD, MAIL_RECEIVER]):
         app.logger.warning("Gmail settings are missing; enquiry saved to database only.")
@@ -1170,9 +1543,9 @@ Received: {received_at}
     reply_mail.set_content(
         f"""Hello {name},
 
-Thank you for contacting Shubham Chauhan regarding {subject}.
+Thank you for choosing to discuss your project with Shubham Chauhan.
 
-Your enquiry has been received successfully. I will review your requirements and respond personally as soon as possible.
+Your enquiry regarding "{subject}" has been received successfully. Your requirements will now be reviewed for scope, technical approach, delivery plan, and commercial estimate. A separate quotation email will follow with the available project details.
 
 Your Enquiry ID: {enquiry_id}
 Please keep this ID and include it in every future requirement, change request or issue related to this project.
@@ -1180,10 +1553,10 @@ Please keep this ID and include it in every future requirement, change request o
 Your message:
 {message}
 
-Thanks,
+Thank you,
 Shubham Chauhan
-Software Engineer
-Mobile Apps | Web Development | Cloud & API Solutions
+Full Stack Developer
+Web Apps | Mobile Apps | APIs | Cloud Solutions
 """
     )
     reply_mail.add_alternative(
@@ -1198,7 +1571,11 @@ Mobile Apps | Web Development | Cloud & API Solutions
   </div>
   <div style="padding:30px">
     <p style="font-size:16px">Hello <strong>{h_name}</strong>,</p>
-    <p style="line-height:1.7;color:#475569">Thank you for contacting me regarding <strong>{h_subject}</strong>. I will review the requirements and respond personally as soon as possible.</p>
+    <p style="line-height:1.75;color:#475569">Thank you for sharing your requirements for <strong>{h_subject}</strong>. Your enquiry has been securely recorded and will be reviewed for scope, technical approach, delivery plan, and commercial estimate.</p>
+    <div style="margin:20px 0;padding:18px;border-radius:14px;background:#f8fafc;border:1px solid #e2e8f0">
+      <div style="margin-bottom:10px;color:#172554;font-size:12px;font-weight:800;letter-spacing:1px">WHAT HAPPENS NEXT</div>
+      <div style="line-height:1.8;color:#475569">1. Your submitted requirements are reviewed.<br>2. A separate quotation email is prepared and sent.<br>3. You can reply to either email for clarification, changes, or approval.</div>
+    </div>
     <div style="margin:20px 0;padding:18px;border-radius:14px;background:#172554;color:#fff;text-align:center">
       <div style="font-size:11px;letter-spacing:1.5px;color:#bfdbfe;font-weight:700">YOUR ENQUIRY ID</div>
       <div style="margin-top:7px;font-size:24px;font-weight:800;letter-spacing:.5px">{h_enquiry_id}</div>
@@ -1208,7 +1585,7 @@ Mobile Apps | Web Development | Cloud & API Solutions
       <div style="margin-bottom:8px;color:#2563eb;font-size:12px;font-weight:700;letter-spacing:1px">YOUR ENQUIRY</div>
       <div style="white-space:pre-wrap;line-height:1.65;color:#334155">{h_message}</div>
     </div>
-    <p style="line-height:1.6">Thanks,<br><strong style="color:#172554">Shubham Chauhan</strong><br><span style="color:#64748b">Software Engineer · Mobile Apps · Web Development · Cloud & API Solutions</span></p>
+    <p style="line-height:1.65">Thank you,<br><strong style="color:#172554">Shubham Chauhan</strong><br><span style="color:#64748b">Full Stack Developer · Web Apps · Mobile Apps · APIs · Cloud Solutions</span></p>
   </div>
   <div style="padding:16px 30px;background:#f8fafc;color:#94a3b8;font-size:11px;text-align:center">This is an automatic confirmation from the Shubham Chauhan portfolio.</div>
 </div></body></html>""",
@@ -1225,9 +1602,215 @@ Mobile Apps | Web Development | Cloud & API Solutions
 
     with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as smtp:
         smtp.login(MAIL_USERNAME, MAIL_PASSWORD)
-        smtp.send_message(owner_mail)
+        if notify_owner:
+            smtp.send_message(owner_mail)
         smtp.send_message(reply_mail)
 
+    return True
+
+
+def send_quotation_email(record: dict[str, Any]) -> bool:
+    """Send the client a separate quotation after their confirmation email."""
+    if not all([MAIL_USERNAME, MAIL_PASSWORD, MAIL_RECEIVER]):
+        app.logger.warning("Gmail settings are missing; quotation was not sent.")
+        return False
+
+    enquiry_id = safe_text(record.get("enquiry_id"), 40)
+    quote = quotation_values(enquiry_id, record.get("project_amount"))
+    for key in quote:
+        if record.get(key) not in (None, ""):
+            quote[key] = record[key]
+
+    name = safe_text(record.get("client_name"), 100)
+    email = safe_text(record.get("email"), 180)
+    subject = safe_text(record.get("project_subject"), 160)
+    details = safe_text(record.get("project_details"), 5000)
+    amount = quote["quotation_amount"]
+    amount_text = (
+        f"{quote['quotation_currency']} {float(amount):,.2f}"
+        if amount is not None else "To be finalized after requirement discussion"
+    )
+    valid_until = quote["quotation_valid_until"]
+    if isinstance(valid_until, str):
+        valid_until_text = valid_until
+    else:
+        valid_until_text = valid_until.strftime("%d %b %Y")
+
+    mail = EmailMessage()
+    mail["Subject"] = f"[{quote['quotation_number']}] Project quotation - {subject}"
+    mail["From"] = f"Shubham Chauhan <{MAIL_USERNAME}>"
+    mail["To"] = email
+    mail["Reply-To"] = MAIL_RECEIVER
+    mail.set_content(
+        f"""Hello {name},
+
+Thank you for the opportunity to understand your project. Based on the requirements currently available, I have prepared the following preliminary quotation for your review.
+
+Quotation: {quote['quotation_number']}
+Enquiry: {enquiry_id}
+Project: {subject}
+Amount: {amount_text}
+Delivery estimate: {quote['delivery_days']} days
+Valid until: {valid_until_text}
+Payment terms: {quote['payment_terms']}
+
+Scope:
+{details}
+
+Notes:
+{quote['quotation_notes']}
+
+This quotation provides a clear starting point. Final scope, milestones, integrations, and delivery dates will be confirmed before development begins.
+
+Reply to this email with "Approved" to proceed, or share any changes you would like included.
+
+Thank you,
+Shubham Chauhan
+Full Stack Developer
+"""
+    )
+    escaped = {key: html_lib.escape(str(value)) for key, value in {
+        "name": name, "number": quote["quotation_number"], "enquiry": enquiry_id,
+        "subject": subject, "amount": amount_text, "days": quote["delivery_days"],
+        "valid": valid_until_text, "terms": quote["payment_terms"],
+        "details": details, "notes": quote["quotation_notes"],
+    }.items()}
+    mail.add_alternative(
+        f"""<!doctype html><html><body style="margin:0;background:#f1f5f9;font-family:Arial,sans-serif;color:#0f172a">
+<div style="max-width:680px;margin:28px auto;background:#fff;border:1px solid #dbeafe;border-radius:20px;overflow:hidden">
+  <div style="padding:26px 30px;background:linear-gradient(135deg,#172554,#2563eb);color:#fff">
+    <div style="font-size:12px;letter-spacing:2px;font-weight:700">PROJECT QUOTATION</div>
+    <h1 style="margin:10px 0 4px;font-size:25px">{escaped['number']}</h1>
+    <p style="margin:0;color:#dbeafe">Prepared for {escaped['name']}</p>
+  </div>
+  <div style="padding:30px">
+    <p style="margin-top:0;line-height:1.75;color:#475569">Thank you for the opportunity to understand your project. Based on the requirements currently available, I have prepared this preliminary quotation as a clear starting point for our discussion.</p>
+    <table role="presentation" style="width:100%;border-collapse:collapse;font-size:14px">
+      <tr><td style="padding:9px;color:#64748b">Enquiry ID</td><td style="padding:9px;font-weight:700">{escaped['enquiry']}</td></tr>
+      <tr><td style="padding:9px;color:#64748b">Project</td><td style="padding:9px;font-weight:700">{escaped['subject']}</td></tr>
+      <tr><td style="padding:9px;color:#64748b">Quotation amount</td><td style="padding:9px;font-size:19px;font-weight:800;color:#2563eb">{escaped['amount']}</td></tr>
+      <tr><td style="padding:9px;color:#64748b">Delivery estimate</td><td style="padding:9px">{escaped['days']} days</td></tr>
+      <tr><td style="padding:9px;color:#64748b">Valid until</td><td style="padding:9px">{escaped['valid']}</td></tr>
+      <tr><td style="padding:9px;color:#64748b">Payment terms</td><td style="padding:9px">{escaped['terms']}</td></tr>
+    </table>
+    <div style="margin-top:20px;padding:18px;border-radius:14px;background:#eff6ff"><strong>Project scope</strong><div style="margin-top:8px;white-space:pre-wrap;line-height:1.65">{escaped['details']}</div></div>
+    <div style="margin-top:18px;padding:16px 18px;border-radius:12px;background:#fffbeb;border:1px solid #fde68a;color:#78350f;line-height:1.65"><strong>Important note</strong><br>{escaped['notes']}</div>
+    <p style="margin-top:24px;line-height:1.7">Final scope, milestones, integrations, and delivery dates will be confirmed before development begins. Reply with <strong>Approved</strong> to proceed, or share the changes you would like included.</p>
+    <p style="line-height:1.65">Thank you,<br><strong style="color:#172554">Shubham Chauhan</strong><br><span style="color:#64748b">Full Stack Developer · Web Apps · Mobile Apps · APIs · Cloud Solutions</span></p>
+  </div>
+</div></body></html>""",
+        subtype="html",
+    )
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as smtp:
+        smtp.login(MAIL_USERNAME, MAIL_PASSWORD)
+        smtp.send_message(mail)
+    return True
+
+
+def send_payment_email(
+    record: dict[str, Any], *, kind: str, received_amount: Any = None
+) -> bool:
+    """Send a professional payment receipt or overdue-balance reminder."""
+    if kind not in {"receipt", "reminder"}:
+        raise ValueError("Unsupported payment email type")
+    if not all([MAIL_USERNAME, MAIL_PASSWORD, MAIL_RECEIVER]):
+        app.logger.warning("Gmail settings are missing; payment email was not sent.")
+        return False
+
+    enquiry_id = safe_text(record.get("enquiry_id"), 40)
+    name = safe_text(record.get("client_name"), 100)
+    email = safe_text(record.get("email"), 180)
+    project = safe_text(record.get("project_subject"), 160)
+    total = enquiry_store.parse_amount(record.get("project_amount"))
+    paid = enquiry_store.parse_amount(record.get("amount_received")) or 0
+    pending = max((total or 0) - paid, 0) if total is not None else None
+    received = enquiry_store.parse_amount(received_amount)
+    currency = safe_text(record.get("quotation_currency"), 10) or "INR"
+    due_date = record.get("payment_due_date")
+    due_text = (
+        due_date.strftime("%d %b %Y") if isinstance(due_date, date)
+        else safe_text(due_date, 40) or "Not specified"
+    )
+
+    def money(value: Any) -> str:
+        return f"{currency} {float(value):,.2f}" if value is not None else "To be confirmed"
+
+    is_receipt = kind == "receipt"
+    title = "Payment received successfully" if is_receipt else "Friendly payment reminder"
+    subject = (
+        f"[{enquiry_id}] Payment received - {project}"
+        if is_receipt else f"[{enquiry_id}] Pending payment reminder - {project}"
+    )
+    intro = (
+        "Thank you. Your payment has been received and recorded successfully. "
+        "Please keep this email as confirmation for your project records."
+        if is_receipt else
+        "This is a courteous reminder that a payment balance remains pending for your project. "
+        "If payment has already been completed, please reply with the transaction reference so the account can be updated."
+    )
+    action = (
+        "No action is required for the amount already received. The remaining balance will follow the agreed project milestones."
+        if is_receipt else
+        "Please arrange the pending payment at your earliest convenience, or reply if you need any clarification regarding the amount or due date."
+    )
+    received_line = money(received if received is not None else paid)
+    mail = EmailMessage()
+    mail["Subject"] = subject
+    mail["From"] = f"Shubham Chauhan <{MAIL_USERNAME}>"
+    mail["To"] = email
+    mail["Reply-To"] = MAIL_RECEIVER
+    mail.set_content(
+        f"""Hello {name},
+
+{intro}
+
+Project: {project}
+Enquiry ID: {enquiry_id}
+Payment received: {received_line if is_receipt else money(paid)}
+Total project amount: {money(total)}
+Pending balance: {money(pending)}
+Payment due date: {due_text}
+
+{action}
+
+Thank you,
+Shubham Chauhan
+Full Stack Developer
+Web Apps | Mobile Apps | APIs | Cloud Solutions
+"""
+    )
+    escaped = {key: html_lib.escape(str(value)) for key, value in {
+        "name": name, "title": title, "intro": intro, "project": project,
+        "enquiry": enquiry_id, "received": received_line if is_receipt else money(paid),
+        "total": money(total), "pending": money(pending), "due": due_text,
+        "action": action,
+    }.items()}
+    mail.add_alternative(
+        f"""<!doctype html><html><body style="margin:0;background:#f4f7fb;font-family:Arial,sans-serif;color:#0f172a">
+<div style="max-width:680px;margin:28px auto;background:#fff;border:1px solid #dbeafe;border-radius:20px;overflow:hidden">
+  <div style="padding:28px 32px;background:#123b8f;color:#fff">
+    <div style="font-size:12px;letter-spacing:2px;font-weight:800">PAYMENT UPDATE</div>
+    <h1 style="margin:10px 0 4px;font-size:25px">{escaped['title']}</h1>
+    <p style="margin:0;color:#dbeafe">{escaped['project']} · {escaped['enquiry']}</p>
+  </div>
+  <div style="padding:32px">
+    <p style="font-size:16px">Hello <strong>{escaped['name']}</strong>,</p>
+    <p style="line-height:1.75;color:#475569">{escaped['intro']}</p>
+    <table role="presentation" style="width:100%;border-collapse:collapse;margin:22px 0;font-size:14px">
+      <tr style="background:#eff6ff"><td style="padding:12px;color:#64748b">Payment received</td><td style="padding:12px;text-align:right;font-weight:800;color:#1d4ed8">{escaped['received']}</td></tr>
+      <tr><td style="padding:12px;color:#64748b">Total project amount</td><td style="padding:12px;text-align:right;font-weight:700">{escaped['total']}</td></tr>
+      <tr style="background:#eff6ff"><td style="padding:12px;color:#64748b">Pending balance</td><td style="padding:12px;text-align:right;font-size:18px;font-weight:800;color:#123b8f">{escaped['pending']}</td></tr>
+      <tr><td style="padding:12px;color:#64748b">Payment due date</td><td style="padding:12px;text-align:right;font-weight:700">{escaped['due']}</td></tr>
+    </table>
+    <div style="padding:17px 19px;border-radius:12px;background:#f8fafc;border-left:4px solid #2563eb;line-height:1.7;color:#334155">{escaped['action']}</div>
+    <p style="margin-top:26px;line-height:1.65">Thank you,<br><strong style="color:#123b8f">Shubham Chauhan</strong><br><span style="color:#64748b">Full Stack Developer · Web Apps · Mobile Apps · APIs · Cloud Solutions</span></p>
+  </div>
+</div></body></html>""",
+        subtype="html",
+    )
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=30) as smtp:
+        smtp.login(MAIL_USERNAME, MAIL_PASSWORD)
+        smtp.send_message(mail)
     return True
 
 
@@ -1622,7 +2205,9 @@ def contact() -> Response:
     if enquiry_store.configured():
         validity, validation_notes = assess_enquiry_validity(email, phone, message)
         try:
+            enquiry_id = f"ENQ-{uuid.uuid4().hex[:12].upper()}"
             record, created = enquiry_store.create_enquiry({
+                "enquiry_id": enquiry_id,
                 "submission_token": submission_token,
                 "received_at": created_at,
                 "client_name": name,
@@ -1633,6 +2218,7 @@ def contact() -> Response:
                 "project_amount": project_amount,
                 "validity": validity,
                 "validation_notes": validation_notes,
+                **quotation_values(enquiry_id, project_amount),
             })
         except Exception:
             app.logger.exception("Unable to save enquiry to Postgres")
@@ -1654,6 +2240,15 @@ def contact() -> Response:
         enquiry_store.update_delivery(
             record["enquiry_id"], "Sent" if email_sent else "Saved only"
         )
+        quotation_sent = False
+        if email_sent:
+            try:
+                quotation_sent = send_quotation_email(record)
+            except Exception:
+                app.logger.exception("Unable to deliver automatic quotation")
+        enquiry_store.update_quotation_delivery(
+            record["enquiry_id"], "Sent" if quotation_sent else "Pending"
+        )
         record = enquiry_store.get_enquiry(record["enquiry_id"]) or record
         try:
             upsert_enquiry_to_google_sheet(record)
@@ -1661,10 +2256,12 @@ def contact() -> Response:
             app.logger.exception("Unable to sync enquiry to Google Sheet")
 
         flash(
-            "Thank you. Your enquiry was sent successfully."
+            "Thank you. Your confirmation and quotation were sent successfully."
+            if email_sent and quotation_sent
+            else "Thank you. Your enquiry was sent; the quotation is pending."
             if email_sent
             else "Your enquiry was saved; email delivery will be retried.",
-            "success" if email_sent else "warning",
+            "success" if email_sent and quotation_sent else "warning",
         )
         return redirect(url_for("home", _anchor="contact"))
 
@@ -1695,6 +2292,20 @@ def contact() -> Response:
         app.logger.exception("Gmail authentication failed.")
     except Exception:
         app.logger.exception("Unable to deliver enquiry email.")
+
+    quotation_sent = False
+    if email_sent:
+        try:
+            quotation_sent = send_quotation_email({
+                "enquiry_id": f"ENQ-{int(message_id):05d}",
+                "client_name": name,
+                "email": email,
+                "project_subject": subject,
+                "project_details": message,
+                "project_amount": project_amount,
+            })
+        except Exception:
+            app.logger.exception("Unable to deliver automatic quotation.")
 
     with database_connection() as connection:
         connection.execute(
@@ -1732,8 +2343,10 @@ def contact() -> Response:
     except Exception:
         app.logger.exception("Unable to update the Google Sheet enquiry register.")
 
-    if email_sent:
-        flash("Thank you. Your enquiry was sent successfully.", "success")
+    if email_sent and quotation_sent:
+        flash("Thank you. Your confirmation and quotation were sent successfully.", "success")
+    elif email_sent:
+        flash("Thank you. Your confirmation was sent; the quotation is pending.", "warning")
     else:
         flash(
             "Your enquiry was saved. Email delivery is not configured yet, "
@@ -1864,12 +2477,19 @@ def chat_stream() -> Response:
 
 
 def sync_request_authorized() -> bool:
-    expected = os.getenv("SHEET_SYNC_SECRET", "").strip()
-    if not expected:
+    expected_values = {
+        value for value in (
+            os.getenv("SHEET_SYNC_SECRET", "").strip(),
+            os.getenv("CRON_SECRET", "").strip(),
+        ) if value
+    }
+    if not expected_values:
         return False
     supplied = request.headers.get("Authorization", "").removeprefix("Bearer ")
     supplied = supplied or request.headers.get("X-Sync-Secret", "")
-    return bool(supplied) and secrets.compare_digest(supplied, expected)
+    return bool(supplied) and any(
+        secrets.compare_digest(supplied, expected) for expected in expected_values
+    )
 
 
 @app.route("/api/sync/google-sheet", methods=["GET", "POST"])
